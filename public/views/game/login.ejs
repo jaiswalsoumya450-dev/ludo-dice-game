@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    const NODE_ENV = "<%= NODE_ENV %>";
+    const MISC_BASE_URL = "<%= MISC_BASE_URL %>";
+  </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+  <div class="bg-white p-10 rounded-xl shadow-md w-full max-w-sm">
+    <h2 class="font-bold text-center mb-6 text-xl">Login</h2>
+
+    <form id="guest_login" method="post" action="javascript:">
+
+      <div class="form-group mb-4">
+        <label class="block text-gray-600 mb-1">Device ID</label>
+        <input type="text" id="did" name="did" placeholder="Enter your device ID"
+          class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+      </div>
+
+      <div class="form-group mb-6">
+        <label class="block text-gray-600 mb-1">Name</label>
+        <input type="text" id="sName" name="sName" placeholder="Enter your name"
+          class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+      </div>
+
+      <button type="submit"
+        class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded-lg transition">
+        Login
+      </button>
+
+    </form>
+
+    <p id="message" class="text-center mt-4 text-sm text-green-600"></p>
+  </div>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="/js/constants.js"></script>
+  <script src="/js/login.js"></script>
+
+</body>
+</html>
