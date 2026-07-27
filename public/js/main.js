@@ -22,9 +22,7 @@ $(document).ready(function () {
     // Refresh from API
     fetchUser(function (user) {
         setName(user.sName);
-        setChips(user.chips);
         localStorage.setItem('sName', user.sName);
-        localStorage.setItem('chips', user.chips);
     });
 
     // Name button -> open popup with fresh user data
@@ -32,7 +30,6 @@ $(document).ready(function () {
         fetchUser(function (user) {
             $('#popup-avatar').text(user.sName ? user.sName.charAt(0).toUpperCase() : '?');
             $('#popup-name').val(user.sName);
-            $('#popup-chips').val(Number(user.chips).toLocaleString());
             showPopup();
         });
     });
@@ -65,6 +62,22 @@ $(document).ready(function () {
             },
             error: function () {
                 showPopupMsg('Failed to save. Try again.');
+            }
+        });
+    });
+
+    // Delete account
+    $('#delete-account-btn').on('click', function () {
+        $.ajax({
+            url: `${API_BASE_URL}/api/v1/user/${_id}`,
+            type: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+            success: function () {
+                localStorage.clear();
+                window.location.href = '/web/login';
+            },
+            error: function () {
+                showPopupMsg('Failed to delete. Try again.');
             }
         });
     });

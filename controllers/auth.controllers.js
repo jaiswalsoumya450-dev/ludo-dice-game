@@ -1,7 +1,7 @@
 "use strict";
 const jwt = require('jsonwebtoken');
 const authService = require('../services/auth.services');
-const cache = require('../utils/redis/cache');
+const redisCache = require('../services/user.services');
 
 //to stamp the JWT token with a secret key, we need to define a secret key. 
 // In production, this should be set as an environment variable for security reasons. 
@@ -21,7 +21,7 @@ async function fnGuestLogin(req, res) {
         const user = await authService.fnGuestLogin({ did, sName });
 
         //cache user in Redis immediately after login
-        await cache.setUser(user);
+        await redisCache.fnRedisGetUser(user);
 
         //create a JWT token for the user
         const token = jwt.sign(

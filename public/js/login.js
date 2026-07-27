@@ -2,6 +2,12 @@
 
 $(document).ready(function () {
 
+    //if token n id are there refreshing will stay logged in
+    if (localStorage.getItem('token') && localStorage.getItem('_id')) {
+        window.location.href = '/web/main';
+        return;
+    }
+
     $(document).on('submit', '#guest_login', fnGuestLogin);
 
     function fnGuestLogin() {
@@ -23,7 +29,7 @@ $(document).ready(function () {
             contentType: 'application/json',
             data: JSON.stringify({ did, sName }),
             success: function (result) {
-                localStorage.setItem('token', result.token);
+                localStorage.setItem('token', result.token); //token from header
                 localStorage.setItem('_id',   result._id);
                 localStorage.setItem('sName', result.sName);
                 localStorage.setItem('did',   result.did);

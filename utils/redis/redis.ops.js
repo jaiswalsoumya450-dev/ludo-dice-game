@@ -2,7 +2,6 @@
 
 
 const _ = require('lodash');
-const Peers = require('weighted-round-robin');
 
 const fnRedisKeyExists = (client, key) => client.exists(key);
 const fnRedisKeyExpire = (client, key, ttl = 3600) => client.expire(key, ttl);
