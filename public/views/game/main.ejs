@@ -24,7 +24,8 @@
       filter: drop-shadow(0 6px 0 rgba(0,0,0,0.35));
     }
 
-    #popup-overlay {
+    #popup-overlay,
+    #pub-popup-overlay {
       display: none;
       position: fixed;
       inset: 0;
@@ -33,7 +34,8 @@
       align-items: center;
       justify-content: center;
     }
-    #popup-overlay.open { display: flex; }
+    #popup-overlay.open,
+    #pub-popup-overlay.open { display: flex; }
   </style>
 </head>
 <body class="min-h-screen text-white relative">
@@ -84,7 +86,7 @@
 
     <!-- Game mode buttons -->
     <div class="flex gap-6">
-      <button class="w-60 h-40 bg-green-500 hover:bg-green-400 rounded-2xl flex flex-col items-center justify-center gap-2 transition shadow-lg">
+      <button id="public-mode" class="w-60 h-40 bg-green-500 hover:bg-green-400 rounded-2xl flex flex-col items-center justify-center gap-2 transition shadow-lg">
         <div class="flex items-center gap-2">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" stroke-width="2"/>
@@ -95,7 +97,7 @@
         <span class="text-green-100 text-sm">Join open matches</span>
       </button>
 
-      <button class="w-60 h-40 bg-purple-600 hover:bg-purple-500 rounded-2xl flex flex-col items-center justify-center gap-2 transition shadow-lg">
+      <button id="private-mode" class="w-60 h-40 bg-purple-600 hover:bg-purple-500 rounded-2xl flex flex-col items-center justify-center gap-2 transition shadow-lg">
         <div class="flex items-center gap-2">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <rect x="5" y="11" width="14" height="10" rx="2" stroke-width="2"/>
@@ -130,6 +132,58 @@
 
       <button id="delete-account-btn" class="w-full bg-red-700 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-sm transition">
         Delete Account
+      </button>
+    </div>
+  </div>
+
+  <!-- Public Game popup -->
+  <div id="pub-popup-overlay">
+    <div id="pub-popup-card" class="bg-gray-900 border border-gray-700 rounded-2xl p-8 w-80 flex flex-col items-center gap-5 relative">
+      <button id="pub-close-popup" class="absolute top-4 right-4 text-gray-400 hover:text-white text-lg leading-none">✕</button>
+      <h2 class="text-white font-bold text-xl">Multiplayer Game</h2>
+
+      <div class="w-full">
+        <label class="text-gray-400 text-xs mb-1 block uppercase tracking-wide">Maximum Players</label>
+        <input id="pub-max-players" type="number" min="2" max="4" placeholder="2 - 4 players"
+          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"/>
+      </div>
+
+      <div class="w-full">
+        <label class="text-gray-400 text-xs mb-1 block uppercase tracking-wide">Lobby Amount</label>
+        <input id="pub-lobby-amt" type="number" min="0" placeholder="0, 500, or 1000 chips!"
+          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"/>
+      </div>
+
+      <p id="pub-popup-msg" class="text-red-400 text-sm hidden"></p>
+
+      <button id="play-pub-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
+        Play!
+      </button>
+    </div>
+  </div>
+
+  <!-- Private Game popup -->
+  <div id="pri-popup-overlay">
+    <div id="pri-popup-card" class="bg-gray-900 border border-gray-700 rounded-2xl p-8 w-80 flex flex-col items-center gap-5 relative">
+      <button id="pri-close-popup" class="absolute top-4 right-4 text-gray-400 hover:text-white text-lg leading-none">✕</button>
+      <h2 class="text-white font-bold text-xl">Private Game</h2>
+
+      <div class="w-full">
+        <label class="text-gray-400 text-xs mb-1 block uppercase tracking-wide">Maximum Players</label>
+        <input id="pri-max-players" type="number" min="2" max="4" placeholder="2 - 4 players"
+          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"/>
+      </div>
+
+      <div class="w-full">
+        <label class="text-gray-400 text-xs mb-1 block uppercase tracking-wide">Lobby Amount</label>
+        <input id="pri-lobby-amt" type="number" min="0" placeholder="0, 500, or 1000 chips!"
+          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"/>
+      </div>
+
+      <p id="pri-popup-msg" class="text-red-400 text-sm hidden"></p>
+
+      <button id="play-pri-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg text-sm transition">
+        Play!
       </button>
     </div>
   </div>
