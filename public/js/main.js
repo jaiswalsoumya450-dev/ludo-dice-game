@@ -189,7 +189,6 @@ $(document).ready(function () {
     $("#pub-popup-msg").text(msg).removeClass("hidden");
   }
 
-
   function showPrivatePopup() {
     $("#pri-popup-msg").addClass("hidden").text("");
     $("#pri-max-players").val("");
