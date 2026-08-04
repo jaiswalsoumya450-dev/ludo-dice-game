@@ -1,6 +1,7 @@
 'use strict';
 
 const socketIds = {}
+
 const fnPreConnection = (io, socket, next) => {
     try {
         const token = socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -17,6 +18,16 @@ const fnPreConnection = (io, socket, next) => {
 const fnConnection = (socket) => {
     socketIds[socket._userId] = socket.id;
     logger.info(`Socket connected: userId=${socket._userId}, socketId=${socket.id}`);
+
+    socket.on("joinPublicGame", data => {
+        logger.info(`joinPublicGame from userId=${socket._userId}:`, data);
+        socket.broadcast.emit("serverMessage", data);
+    });
+
+    socket.on("joinPrivateGame", (data) => {
+        logger.info(`joinPrivateGame from userId=${socket._userId}:`, data);
+        socket.broadcast.emit("serverMessage", data);
+    });
 
     socket.on("disconnect", () => _fnSocketCleanup(socket));
     socket.on("error", (err) => {

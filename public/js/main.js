@@ -10,6 +10,8 @@ $(document).ready(function () {
     return;
   }
 
+  const socket = io({ path: `/${CODE_VERSION}/socket.io` });
+
   // Populate from localStorage immediately to avoid flash
   //aka set the name and chips from localStorage to the display from before
   //then quickly check after to see if the data is still valid, if not, update it from the API
@@ -102,12 +104,12 @@ $(document).ready(function () {
       showPubPopupMsg("Max players must be between 2 and 4!");
       return;
     }
-    if (!lobbyAmt || lobbyAmt < 1) {
+    if (isNaN(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
       showPubPopupMsg("Lobby amount must be between 0 and 1000!");
       return;
     }
 
-    //pass maxPlayers and lobbyAmt to the matchmaking call
+    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt });
     hidePubPopup();
   });
 
@@ -129,12 +131,12 @@ $(document).ready(function () {
       showPriPopupMsg("Max players must be between 2 and 4!");
       return;
     }
-    if (!lobbyAmt || lobbyAmt < 0 || lobbyAmt > 1000) {
+    if (isNaN(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
       showPriPopupMsg("Lobby amount must be between 0 and 1000!");
       return;
     }
 
-    //pass maxPlayers and lobbyAmt to the matchmaking call
+    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt });
     hidePriPopup();
   });
 
