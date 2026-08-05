@@ -1,5 +1,6 @@
 'use strict';
 
+
 const socketIds = {}
 
 const fnPreConnection = (io, socket, next) => {
@@ -19,14 +20,16 @@ const fnConnection = (socket) => {
     socketIds[socket._userId] = socket.id;
     logger.info(`Socket connected: userId=${socket._userId}, socketId=${socket.id}`);
 
-    socket.on("joinPublicGame", data => {
+    socket.on("joinPublicGame", (data, callback) => {
         logger.info(`joinPublicGame from userId=${socket._userId}:`, data);
         socket.broadcast.emit("serverMessage", data);
+        if (typeof callback === "function") callback({ status: "works", data });
     });
 
-    socket.on("joinPrivateGame", (data) => {
+    socket.on("joinPrivateGame", (data, callback) => {
         logger.info(`joinPrivateGame from userId=${socket._userId}:`, data);
         socket.broadcast.emit("serverMessage", data);
+        if (typeof callback === "function") callback({ status: "works", data });
     });
 
     socket.on("disconnect", () => _fnSocketCleanup(socket));

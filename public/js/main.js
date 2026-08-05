@@ -97,19 +97,21 @@ $(document).ready(function () {
   });
 
   $("#play-pub-btn").on("click", function () {
-    const maxPlayers = parseInt($("#pub-max-players").val(), 4);
-    const lobbyAmt = parseInt($("#pub-lobby-amt").val(), 1000);
+    const maxPlayers = $("#pub-max-players").val();
+    const lobbyAmt = $("#pub-lobby-amt").val();
 
     if (!maxPlayers || maxPlayers < 2 || maxPlayers > 4) {
       showPubPopupMsg("Max players must be between 2 and 4!");
       return;
     }
-    if (isNaN(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
+    if (!(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
       showPubPopupMsg("Lobby amount must be between 0 and 1000!");
       return;
     }
 
-    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt });
+    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt }, callback => {
+    console.log("Server response:", callback);
+  });
     hidePubPopup();
   });
 
@@ -124,19 +126,21 @@ $(document).ready(function () {
   });
 
   $("#play-pri-btn").on("click", function () {
-    const maxPlayers = parseInt($("#pri-max-players").val(), 4);
-    const lobbyAmt = parseInt($("#pri-lobby-amt").val(), 1000);
+    const maxPlayers = $("#pri-max-players").val();
+    const lobbyAmt = $("#pri-lobby-amt").val();
 
     if (!maxPlayers || maxPlayers < 2 || maxPlayers > 4) {
       showPriPopupMsg("Max players must be between 2 and 4!");
       return;
     }
-    if (isNaN(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
+    if (!(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
       showPriPopupMsg("Lobby amount must be between 0 and 1000!");
       return;
     }
 
-    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt });
+    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt }, callback => {
+    console.log("Server response:", callback);
+  });
     hidePriPopup();
   });
 
