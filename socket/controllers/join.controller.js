@@ -14,42 +14,20 @@ const fnLudoPublic = async (socket, body) => {
         message: "restart_app",
       };
 
-    gameServices.fnCheckOtherTable(redisUser);
-
     body = _.pick(body, ["maxPlayers", "lobbyChips"]);
     body.eGameType = "LUDO";
     body.eRoomMode = "Public";
-    body.iMaxPlayer = Number(body.iMaxPlayer) || 2;
-    body.iLobbyId = Number(body.iLobbyId) || 0;
-
-    const lobbyData = gameServices.fnGetValidLobby({
-      eGameType: body.eGameType,
-      eRoomMode: body.eRoomMode,
-      iLobbyId: body.iLobbyId,
-    });
-
-    if (lobbyData.iLobbyChips < 0) {
-      throw {
-        status: 412,
-        message: "No player found, try again later!",
-      };
-    }
-
-    body.iLobbyChips = lobbyData.iLobbyChips;
-    body.nTotalChips = Number(redisUser.nTotalChips) || 0;
-    body.nLevel = Number(redisUser.nLevel) || 1;
-
-    if (body.iLobbyChips > body.nTotalChips) {
-      throw {
-        status: 400,
-        message: "You do not have enough chips to join the game!",
-        data: { nTotalChips: body.nTotalChips },
-      };
-    }
-
+    body.maxPlayer = Number(body.maxPlayer) || 2;
     body._userId = _userId;
     body.sName = redisUser.sName || "Player";
     body.sImage = redisUser.sImage || "0";
+
+    if (body.lobbyChips > (Number(redisUser.nTotalChips) || 0)) {
+      throw {
+        status: 400,
+        message: "You do not have enough chips to join the game!",
+      };
+    }
   } catch (err) {
     if (!err.status) {
       logger.warn("LUDO public room ERROR", err);
