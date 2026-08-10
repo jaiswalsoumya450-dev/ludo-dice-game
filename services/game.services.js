@@ -15,7 +15,7 @@ const fnAddPlayerGameList = async ({ _userId, maxPlayers }) => {
       return verifyResult;
     }
 
-    redisOps.fnRedisHSET(fnRedisKEYS.finRedisUserKey(_userId));
+    redisOps.fnRedisHSET(redisKeys.fnRedisUserKey(_userId));
     return result;
   } catch (err) {
     throw err;
@@ -63,31 +63,22 @@ const fnRedisSaveNewGame = async ({
             _id: _gameId,
             eGameType: body.eGameType,
             eRoomMode: body.eRoomMode,
-            iMaxPlayer: body.iMaxPlayer,
+            maxPlayers: body.iMaxPlayer,
             iLobbyId: body.iLobbyId,
-            iLobbyChips: body.iLobbyChips,
-
-            createdAt: new Date().toISOString(),
-            PI: constants.PROCESS_IDENTIFIER,
-            PS: redisOps.fnGetRedisGamePubsubServer(),
-            eStatus: "Waiting"
+            lobbyChips: body.iLobbyChips,
         };
 
-        if (body.sName) tableData.sOwnerName = body.sName;
+        if (body.sName) gameData.sOwnerName = body.sName;
 
         const expireAt = waitingTimer / 1000 + 15;
 
-        if (body.vPrivateCode || gameData.eRoomMode == 'Private') {
-            gameData.vPrivateCode = body.vPrivateCode ? body.vPrivateCode : await _fnGetGamePvtCode(tableData._id, tableData.eGameType, expireAt, body.vPrivateCode);
-        }
+        gameData = redisSchemaGame.fnSetGameSchema(gameData, true);
 
-        tableData = redisSchemaGame.fnSetGameSchema(tableData, true);
+        await redisOps.fnRedisHMSETEX(redisClientGame, redisKeys.fnRedisTableKey(_gameId), gameData, expireAt);
 
-        await redisOps.fnRedisHMSETEX(redisClientGame, redisKeys.fnRedisTableKey(_tableId), tableData, expireAt);
+        if (!body._tmntId) redisOps.fnRedisSADD(redisClientGameSA, redisKeys.fnSETGamesWaitingPI(gameData.PI), _gameId.toString()).catch(helper.cbe);
 
-        if (!body._tmntId) redisOps.fnRedisSADD(redisClientGameSA, redisKeys.fnSETGamesWaitingPI(tableData.PI), _tableId.toString()).catch(helper.cbe);
-
-        return tableData;
+        return gameData;
 
     } catch (err) {
         throw err;
@@ -100,7 +91,7 @@ const fnRedisRemoveWaitingGame = async (gameData = {}) => {
       .fnRedisSREM(
         redisClientGameSA,
         redisKeys.fnSETGamesWaitingPI(gameData.PI),
-        _gameId,
+        gameData._id,
       )
       .catch(helper.cbe);
 
@@ -112,7 +103,7 @@ const fnRedisRemoveWaitingGame = async (gameData = {}) => {
       result = await redisOps.fnRedisSREM(
         redisClientGameSA,
         keyWaitingGame,
-        _gameId,
+        gameData._id,
       );
       const nBucket =
         typeof gameData.nBucket != "undefined" ? Number(gameData.nBucket) : -1;
@@ -122,7 +113,7 @@ const fnRedisRemoveWaitingGame = async (gameData = {}) => {
         result = await redisOps.fnRedisSREM(
           redisClientGameSA,
           keyWaitingGame,
-          _gameId,
+          gameData._id,
         );
       }
     }

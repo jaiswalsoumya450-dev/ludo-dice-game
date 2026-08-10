@@ -4,7 +4,7 @@ const fnMongoDBConnection = () => {
         const options = {};
 
 
-        mongoose.connect('mongodb://127.0.0.1:27017/db_practice', options)
+        mongoose.connect(constants.MONGO_DB_URL, options)
             .then(() => {
                 resolve();
             })

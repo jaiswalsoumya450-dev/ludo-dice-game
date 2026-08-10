@@ -1,7 +1,7 @@
-const API_BASE_URL = 'http://192.168.1.109:3001';
+const API_BASE_URL = 'http://127.0.0.1:3001';
 
 const port = 3001;
 
 const CODE_VERSION = 'v1';
 
-const ipAddress = '192.168.1.109';
+const ipAddress = '127.0.0.1';

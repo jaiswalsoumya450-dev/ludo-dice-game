@@ -209,10 +209,10 @@ $(document).ready(function () {
   function showPriPopupMsg(msg) {
     $("#pri-popup-msg").text(msg).removeClass("hidden");
   }
-  
+
+});
 
 function logout() {
   localStorage.clear();
   window.location.href = "/web/login";
 }
-});
