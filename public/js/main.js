@@ -104,14 +104,14 @@ $(document).ready(function () {
       showPubPopupMsg("Max players must be between 2 and 4!");
       return;
     }
-    if (!(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
+    if (!lobbyAmt || lobbyAmt < 0 || lobbyAmt > 1000) {
       showPubPopupMsg("Lobby amount must be between 0 and 1000!");
       return;
     }
 
-    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt }, callback => {
-    console.log("Server response:", callback);
-  });
+    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt }, (callback) => {
+      console.log("Server response:", callback);
+    });
     hidePubPopup();
   });
 
@@ -133,14 +133,14 @@ $(document).ready(function () {
       showPriPopupMsg("Max players must be between 2 and 4!");
       return;
     }
-    if (!(lobbyAmt) || lobbyAmt < 0 || lobbyAmt > 1000) {
+    if (!lobbyAmt || lobbyAmt < 0 || lobbyAmt > 1000) {
       showPriPopupMsg("Lobby amount must be between 0 and 1000!");
       return;
     }
 
-    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt }, callback => {
-    console.log("Server response:", callback);
-  });
+    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt }, (callback) => {
+      console.log("Server response:", callback);
+    });
     hidePriPopup();
   });
 
@@ -209,8 +209,72 @@ $(document).ready(function () {
   function showPriPopupMsg(msg) {
     $("#pri-popup-msg").text(msg).removeClass("hidden");
   }
-
 });
+
+//public search
+$(document).on("submit", "#pub-search", (e) => {
+  if (!socket.connected) {
+    myNotification(getStatusText(404), "Please connect to socket!");
+    return;
+  }
+
+  const gameType = $("#pub-search #pub_game").val() || "LUDO";
+  const maxPlayer = $("#pub-search #pub_max").val() || 2;
+  const lobbyId = $("#pub-search #lobbyId").val() || 2;
+  const eventName = LUDO_PUBLIC_SEARCH_EVENT[eGameType] || "LUDO_public_room";
+
+  fnPubSearch({
+    eventName,
+    maxPlayer,
+    lobbyId,
+  });
+});
+
+//private game
+$(document).on("submit", "#pri-search", (e) => {
+  e.preventDefault();
+  if (!socket.connected) {
+    myNotification(getStatusText(404), "Please connect to socket!");
+    return;
+  }
+
+  const viewCode = $("#pri-search #viewCode").val() || null;
+  if (viewCode) return fnViewGame(viewCode);
+
+  const vPrivateCode = $("#lk-pmp-search #vPrivateCode").val() || "newTable";
+  const iLobbyId = $("#lk-pmp-search #iLobbyId").val() || 1;
+  const bView = $("#lk-pmp-search #bView").val() || 0;
+
+  let eGameType = $("#lk-pmp-search #pmp_game").val() || "LUDO";
+  let iMaxPlayer = $("#lk-pmp-search #pmp_max").val() || 2;
+
+  if (vPrivateCode != "newTable") {
+    const prefix = vPrivateCode.toString()[0] || "0";
+    eGameType = GAME_TYPE_BY_PREFIX[prefix].eGameType || "LUDO";
+    iMaxPlayer = GAME_TYPE_BY_PREFIX[prefix].iMaxPlayer || 4;
+  } else if (bHost == 1) {
+    return fnHostGame({
+      eventName: "host_game",
+      eGameType,
+      iMaxPlayer,
+      iLobbyId,
+      bUndo,
+      bView,
+    });
+  }
+
+  const eventName = LUDO_PRIVATE_SEARCH_EVENT[eGameType] || "LUDO_private_room";
+  return fnPMPSearch({
+    eventName,
+    vPrivateCode,
+    iMaxPlayer,
+    iLobbyId,
+    bUndo,
+    bView,
+  });
+});
+
+
 
 function logout() {
   localStorage.clear();
