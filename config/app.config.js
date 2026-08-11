@@ -37,7 +37,7 @@ module.exports = (app) => {
         if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
             return httpResponse.fnBadRequest(res);
         }
-        return next();
+        return next(err);
     });
 
     // App routes

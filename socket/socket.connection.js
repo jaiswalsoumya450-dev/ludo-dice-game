@@ -13,7 +13,7 @@ const fnPreConnection = (io, socket, next) => {
         const token = socket.handshake.auth?.token || socket.handshake.query?.token;
         if (!token) return next(new Error("Unauthorized"));
 
-        const decoded = jwt.verify(token, constants.JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
         socket._userId = decoded.userId;
         next();
     } catch (err) {

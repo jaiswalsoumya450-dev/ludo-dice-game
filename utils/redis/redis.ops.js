@@ -211,7 +211,7 @@ const fnLockAcquire = async (client, lockKey, ttl = 1) => {
 
 const fnLockRelease = async (client, lockKey) => {
     try {
-        fnRedisKeyDEL(client, lockKey).catch(helper.cbe);
+        fnRedisKeyDEL(client, lockKey).catch((err) => logger.warn(err, lockKey));
     } catch (err) {
         logger.warn(err, lockKey);
     }
