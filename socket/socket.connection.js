@@ -1,7 +1,12 @@
 'use strict';
 
+const jwt = require('jsonwebtoken');
+const gameServices = require('../services/game.services');
 
-const socketIds = {}
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_in_prod';
+
+const socketIds = {};
+const roomTimers = new Map(); // gameId -> Timeout
 
 const fnPreConnection = (io, socket, next) => {
     try {
@@ -15,6 +20,7 @@ const fnPreConnection = (io, socket, next) => {
         next(new Error("Unauthorized"));
     }
 };
+
 
 const fnConnection = (socket) => {
     socketIds[socket._userId] = socket.id;
@@ -48,5 +54,4 @@ const _fnSocketCleanup = (socket) => {
         logger.error("Socket cleanup error", err);
     }
 };
-
 module.exports = { fnPreConnection, fnConnection, socketIds };

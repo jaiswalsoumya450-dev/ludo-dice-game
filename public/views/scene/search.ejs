@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LUDO — Waiting Room</title>
+  <link rel="icon" type="image/png" href="/dice.avif">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    const NODE_ENV = "<%= NODE_ENV %>";
+    const MISC_BASE_URL = "<%= MISC_BASE_URL %>";
+  </script>
+  <style>
+    body {
+      background: radial-gradient(ellipse at 50% 35%, #1e3799 0%, #0a1628 65%);
+      min-height: 100vh;
+    }
+
+    .title-badge {
+      font-family: 'Fredoka One', cursive;
+    }
+
+    .player-slot {
+      background: linear-gradient(160deg, #eef1f6 0%, #c7ccd6 100%);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: .3; }
+      50% { opacity: 1; }
+    }
+    .pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+  </style>
+</head>
+<body class="min-h-screen text-white relative">
+
+  <div class="flex flex-col items-center min-h-screen py-10 px-4 gap-5">
+
+    <!-- Title badge -->
+    <div class="title-badge border-4 border-yellow-400 bg-[#122a63] text-white text-xl sm:text-2xl font-bold px-8 py-3 rounded-full shadow-lg text-center">
+      Real Time Multiplayer
+    </div>
+
+    <!-- Room code -->
+    <div id="room-code" class="bg-[#0d1e4d] border border-blue-800 text-yellow-400 font-bold text-lg tracking-[0.25em] px-6 py-2 rounded-full min-w-[12rem] text-center">
+      --------
+    </div>
+
+    <!-- Status message (starting / cancelled) -->
+    <p id="room-status-msg" class="hidden text-sm text-yellow-300 font-medium text-center max-w-xs"></p>
+
+    <!-- Players + timer -->
+    <div id="players-wrap" class="flex flex-col items-center gap-5 w-full max-w-xs"></div>
+
+    <!-- Cancel -->
+    <button id="leave-btn" class="mt-2 flex items-center gap-2 bg-black bg-opacity-40 border border-red-500 text-red-400 rounded-full px-6 py-2 text-sm font-medium hover:bg-red-900 hover:bg-opacity-30 transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+      Cancel
+    </button>
+  </div>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="/js/constants.js"></script>
+  <script src="/v1/socket.io/socket.io.js"></script>
+  <script src="/js/search.js"></script>
+</body>
+</html>

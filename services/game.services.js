@@ -1,133 +1,139 @@
 "use strict";
 
-const fnCreateNewGameObject = (data = {}) => new table(data);
+// Minimal in-memory matchmaking rooms. Single-process only — good enough
+// until real game state needs to survive a server restart / run across
+// multiple instances.
 
-const fnAddPlayerGameList = async ({ _userId, maxPlayers }) => {
-  try {
-    const result =
-      maxPlayers > 1
-        ? await redisOps.fnRedisHSET(_userId)
-        : await redisOps.fnRedisHSETEX(_userId);
+const WAITING_MS = 30000;
 
-    if (!result) {
-      const verifyResult = await redisOps.fnRedisHSETEX(_userId);
-      if (!verifyResult) throw "could_not_set_player";
-      return verifyResult;
+const rooms = new Map(); // gameId -> room
+
+const fnGenerateRoomCode = () =>
+  String(Math.floor(10000000 + Math.random() * 90000000));
+
+const fnGenerateGameId = () =>
+  `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+const fnPublicRoomState = (room) => ({
+  gameId: room.gameId,
+  roomCode: room.roomCode,
+  eRoomMode: room.eRoomMode,
+  maxPlayers: room.maxPlayers,
+  roomStatus: room.status,
+  expiresAt: room.expiresAt,
+  players: Array.from(room.players.values()).map(
+    ({ userId, sName, sImage }) => ({ userId, sName, sImage }),
+  ),
+});
+
+const fnGetRoom = (gameId) => rooms.get(gameId) || null;
+
+const fnDeleteRoom = (gameId) => rooms.delete(gameId);
+
+function fnFindOpenPublicRoom(maxPlayers, lobbyChips) {
+  for (const room of rooms.values()) {
+    if (
+      room.eRoomMode === "Public" &&
+      room.status === "waiting" &&
+      room.maxPlayers === maxPlayers &&
+      room.lobbyChips === lobbyChips &&
+      room.players.size < room.maxPlayers
+    ) {
+      return room;
     }
-
-    redisOps.fnRedisHSET(redisKeys.fnRedisUserKey(_userId));
-    return result;
-  } catch (err) {
-    throw err;
   }
-};
+  return null;
+}
 
-const fnGameUniqueId = async () => {
-    try {
-        let retryCount = 0;
-        const maxRetries = 5;
-
-        // Keep trying until we find a unique ID or hit max retries
-        while (retryCount <= maxRetries) {
-            // Generate new ObjectId
-            const _tableId = new ObjectId();
-
-            // Check if ID already exists in Redis
-            const keyExists = await redisOps.fnRedisKeyExists(
-                redisClientGame,
-                redisKeys.fnRedisTableKey(_tableId)
-            );
-
-            // If ID doesn't exist, we found a unique one
-            if (!keyExists) {
-                return _tableId.toString();
-            }
-
-            retryCount++;
-        }
-
-        throw "retry_count_reached";
+function fnFindPlayerWaitingRoom(eRoomMode, userId) {
+  for (const room of rooms.values()) {
+    if (
+      room.eRoomMode === eRoomMode &&
+      room.status === "waiting" &&
+      room.players.has(userId)
+    ) {
+      return room;
     }
-    catch (err) {
-        throw err;
-    }
-};
-
-const fnRedisSaveNewGame = async ({
-    body,
-    waitingTimer = 40000
-}) => {
-    try {
-        const _gameId = await fnGameUniqueId();
-        let gameData = {
-            _id: _gameId,
-            eGameType: body.eGameType,
-            eRoomMode: body.eRoomMode,
-            maxPlayers: body.iMaxPlayer,
-            iLobbyId: body.iLobbyId,
-            lobbyChips: body.iLobbyChips,
-        };
-
-        if (body.sName) gameData.sOwnerName = body.sName;
-
-        const expireAt = waitingTimer / 1000 + 15;
-
-        gameData = redisSchemaGame.fnSetGameSchema(gameData, true);
-
-        await redisOps.fnRedisHMSETEX(redisClientGame, redisKeys.fnRedisTableKey(_gameId), gameData, expireAt);
-
-        if (!body._tmntId) redisOps.fnRedisSADD(redisClientGameSA, redisKeys.fnSETGamesWaitingPI(gameData.PI), _gameId.toString()).catch(helper.cbe);
-
-        return gameData;
-
-    } catch (err) {
-        throw err;
-    }
-};
-
-const fnRedisRemoveWaitingGame = async (gameData = {}) => {
-  try {
-    redisOps
-      .fnRedisSREM(
-        redisClientGameSA,
-        redisKeys.fnSETGamesWaitingPI(gameData.PI),
-        gameData._id,
-      )
-      .catch(helper.cbe);
-
-    let result;
-    let keyWaitingGame = redisKeys.fnKeyWaitingGame(gameData);
-    if (gameData.vPrivateCode) {
-      result = await redisOps.fnRedisKeyDEL(redisClientGameSA, keyWaitingGame);
-    } else {
-      result = await redisOps.fnRedisSREM(
-        redisClientGameSA,
-        keyWaitingGame,
-        gameData._id,
-      );
-      const nBucket =
-        typeof gameData.nBucket != "undefined" ? Number(gameData.nBucket) : -1;
-      if (nBucket >= 0 && !result) {
-        gameData.nBucket = -1;
-        keyWaitingGame = redisKeys.fnKeyWaitingGame(gameData);
-        result = await redisOps.fnRedisSREM(
-          redisClientGameSA,
-          keyWaitingGame,
-          gameData._id,
-        );
-      }
-    }
-    return result;
-  } catch (err) {
-    logger.warn(err);
   }
-  return;
-};
+  return null;
+}
 
-const fnPublishEvent = ({ PS, channel, e, d, x }) => {
-    try {
-        redisOps.fnRedisPublish(`socket.io#/#${channel}#`, { e, d: aes.fnEncrypt(d), x }, global.gamePublisher[PS]);
-    } catch (err) {
-        logger.warn(err);
+function fnCreateRoom({ eRoomMode, maxPlayers, lobbyChips }) {
+  const room = {
+    gameId: fnGenerateGameId(),
+    roomCode: fnGenerateRoomCode(),
+    eRoomMode,
+    maxPlayers,
+    lobbyChips,
+    status: "waiting",
+    players: new Map(),
+    expiresAt: Date.now() + WAITING_MS,
+  };
+  rooms.set(room.gameId, room);
+  return room;
+}
+
+function fnAddPlayer(room, { userId, sName, sImage }) {
+  room.players.set(userId, {
+    userId,
+    sName: sName || "Player",
+    sImage: sImage || "0",
+  });
+  return room;
+}
+
+function fnRemovePlayer(gameId, userId) {
+  const room = rooms.get(gameId);
+  if (!room) return null;
+  room.players.delete(userId);
+  if (room.players.size === 0) {
+    rooms.delete(gameId);
+    return null;
+  }
+  return room;
+}
+
+function fnJoinPublicGame({ userId, sName, sImage, maxPlayers, lobbyChips }) {
+  let room = fnFindPlayerWaitingRoom("Public", userId);
+  if (!room) room = fnFindOpenPublicRoom(maxPlayers, lobbyChips);
+  if (!room) room = fnCreateRoom({ eRoomMode: "Public", maxPlayers, lobbyChips });
+  return fnAddPlayer(room, { userId, sName, sImage });
+}
+
+function fnJoinPrivateGame({
+  userId,
+  sName,
+  sImage,
+  maxPlayers,
+  lobbyChips,
+  roomCode,
+}) {
+  let room;
+  if (roomCode) {
+    room = Array.from(rooms.values()).find(
+      (r) =>
+        r.eRoomMode === "Private" &&
+        r.roomCode === roomCode &&
+        r.status === "waiting",
+    );
+    if (!room) throw { status: 404, message: "Room not found." };
+    if (!room.players.has(userId) && room.players.size >= room.maxPlayers) {
+      throw { status: 400, message: "Room is full." };
     }
+  } else {
+    room =
+      fnFindPlayerWaitingRoom("Private", userId) ||
+      fnCreateRoom({ eRoomMode: "Private", maxPlayers, lobbyChips });
+  }
+  return fnAddPlayer(room, { userId, sName, sImage });
+}
+
+module.exports = {
+  WAITING_MS,
+  fnJoinPublicGame,
+  fnJoinPrivateGame,
+  fnRemovePlayer,
+  fnGetRoom,
+  fnDeleteRoom,
+  fnPublicRoomState,
 };

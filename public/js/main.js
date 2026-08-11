@@ -10,7 +10,7 @@ $(document).ready(function () {
     return;
   }
 
-  const socket = io({ path: `/${CODE_VERSION}/socket.io` });
+  const socket = io({ path: `/${CODE_VERSION}/socket.io`, auth: { token } });
 
   // Populate from localStorage immediately to avoid flash
   //aka set the name and chips from localStorage to the display from before
@@ -109,10 +109,14 @@ $(document).ready(function () {
       return;
     }
 
-    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt }, (callback) => {
-      console.log("Server response:", callback);
+    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt }, (response) => {
+      if (response && response.status === 200) {
+        localStorage.setItem("activeGame", JSON.stringify(response));
+        window.location.href = "/web/search";
+        return;
+      }
+      showPubPopupMsg((response && response.message) || "Could not join a game. Try again.");
     });
-    hidePubPopup();
   });
 
   // Private mode popup
@@ -138,10 +142,14 @@ $(document).ready(function () {
       return;
     }
 
-    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt }, (callback) => {
-      console.log("Server response:", callback);
+    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt }, (response) => {
+      if (response && response.status === 200) {
+        localStorage.setItem("activeGame", JSON.stringify(response));
+        window.location.href = "/web/search";
+        return;
+      }
+      showPriPopupMsg((response && response.message) || "Could not create a game. Try again.");
     });
-    hidePriPopup();
   });
 
   function fetchUser(callback) {
@@ -210,71 +218,6 @@ $(document).ready(function () {
     $("#pri-popup-msg").text(msg).removeClass("hidden");
   }
 });
-
-//public search
-$(document).on("submit", "#pub-search", (e) => {
-  if (!socket.connected) {
-    myNotification(getStatusText(404), "Please connect to socket!");
-    return;
-  }
-
-  const gameType = $("#pub-search #pub_game").val() || "LUDO";
-  const maxPlayer = $("#pub-search #pub_max").val() || 2;
-  const lobbyId = $("#pub-search #lobbyId").val() || 2;
-  const eventName = LUDO_PUBLIC_SEARCH_EVENT[eGameType] || "LUDO_public_room";
-
-  fnPubSearch({
-    eventName,
-    maxPlayer,
-    lobbyId,
-  });
-});
-
-//private game
-$(document).on("submit", "#pri-search", (e) => {
-  e.preventDefault();
-  if (!socket.connected) {
-    myNotification(getStatusText(404), "Please connect to socket!");
-    return;
-  }
-
-  const viewCode = $("#pri-search #viewCode").val() || null;
-  if (viewCode) return fnViewGame(viewCode);
-
-  const vPrivateCode = $("#lk-pmp-search #vPrivateCode").val() || "newTable";
-  const iLobbyId = $("#lk-pmp-search #iLobbyId").val() || 1;
-  const bView = $("#lk-pmp-search #bView").val() || 0;
-
-  let eGameType = $("#lk-pmp-search #pmp_game").val() || "LUDO";
-  let iMaxPlayer = $("#lk-pmp-search #pmp_max").val() || 2;
-
-  if (vPrivateCode != "newTable") {
-    const prefix = vPrivateCode.toString()[0] || "0";
-    eGameType = GAME_TYPE_BY_PREFIX[prefix].eGameType || "LUDO";
-    iMaxPlayer = GAME_TYPE_BY_PREFIX[prefix].iMaxPlayer || 4;
-  } else if (bHost == 1) {
-    return fnHostGame({
-      eventName: "host_game",
-      eGameType,
-      iMaxPlayer,
-      iLobbyId,
-      bUndo,
-      bView,
-    });
-  }
-
-  const eventName = LUDO_PRIVATE_SEARCH_EVENT[eGameType] || "LUDO_private_room";
-  return fnPMPSearch({
-    eventName,
-    vPrivateCode,
-    iMaxPlayer,
-    iLobbyId,
-    bUndo,
-    bView,
-  });
-});
-
-
 
 function logout() {
   localStorage.clear();
