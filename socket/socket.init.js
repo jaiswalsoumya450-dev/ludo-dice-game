@@ -13,7 +13,7 @@ const fnInit = (http) => {
 
     io.use((socket, next) => socketConnection.fnPreConnection(io, socket, next));
 
-    io.on("connection", (socket) => socketConnection.fnConnection(socket));
+    io.on("connection", (socket) => socketConnection.fnConnection(io, socket));
     io.on("connection_error", _fnSocketErrorHandler);
 
     return;

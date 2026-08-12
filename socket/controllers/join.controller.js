@@ -1,5 +1,9 @@
 "use strict";
-import { redisOps, redisClientUser, redisKeys } from "../utils/redis.utils.js";
+import { redisOps, redisClientUser, redisKeys } from "../utils/redis";
+
+const redisKeys = require("./socket/utils/redis");
+
+const SOCKET_EVENTS = require("./socket.events");
 
 const fnLudoPublic = async (socket, body) => {
   try {
@@ -44,7 +48,7 @@ const fnLudoPublic = async (socket, body) => {
       eGameType: body.eGameType,
       eRoomMode: body.eRoomMode,
       iMaxPlayer: body.maxPlayers,
-      iLobbyChips: body.lobbyChips,
+      lobbyChips: body.lobbyChips,
     });
 
     let _gameId = await redisOps.fnRedisSRANDMEMBER(
@@ -66,21 +70,14 @@ const fnLudoPublic = async (socket, body) => {
         body.maxPlayers = Number(gameData.iMaxPlayer);
         gameData.iTotalPlayer = Number(gameData.iTotalPlayer);
 
-        redisTablePlayerKey = redisKeys.fnRedisTablePlayerKey(_tableId);
-        tablePlayers =
-          (await redisOps.fnRedisHGETALL(
-            redisClientUser,
-            redisTablePlayerKey,
-          )) || Object.create(null);
-
         redisGamePlayerKey = redisKeys.fnRedisGamePlayerKey(_gameId);
         gamePlayers =
           (await redisOps.fnRedisHGETALL(
             redisClientUser,
-            redisTablePlayerKey,
+            redisGamePlayerKey,
           )) || Object.create(null);
 
-        //if player is not already in the table, add them to the table
+        //if player is not already in the game, add them to the game
         if (!gamePlayers[_userId]) {
           if (gameData.iTotalPlayer >= body.iMaxPlayer) throw "game_full";
 
@@ -154,7 +151,7 @@ const fnLudoPublic = async (socket, body) => {
       setTimeout(() => {
         gameServices.fnPublishEvent({
           PS: gameData.PS,
-          channel: tableData._id,
+          channel: gameData._id,
           e: SOCKET_EVENTS.gameInit,
           d: redisSchemaGame.fnGetGameWaitingSchema(gameData),
         });
@@ -209,7 +206,7 @@ const fnLudoPrivate = async (socket, body) => {
     // Validate user exists and is not blocked
     if (!redisUser) throw { status: 401, message: "restart_app" };
 
-    body = body._pick(body, ["maxPlayers", "iLobbyId", "vPrivateCode"]);
+    body = body._pick(body, ["maxPlayers", "lobbyId", "vPrivateCode"]);
 
     body.eGameType = "LUDO";
     body.eRoomMode = "Private";
@@ -238,3 +235,5 @@ const fnLudoPrivate = async (socket, body) => {
     }
   }
 };
+
+module.exports = {fnLudoPublic, fnLudoPrivate}

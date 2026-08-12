@@ -1,12 +1,11 @@
 'use strict';
 
 const jwt = require('jsonwebtoken');
-const gameServices = require('../services/game.services');
+const joinController = require('./socket/controllers/join.controller');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_in_prod';
 
 const socketIds = {};
-const roomTimers = new Map(); // gameId -> Timeout
 
 const fnPreConnection = (io, socket, next) => {
     try {
@@ -14,38 +13,29 @@ const fnPreConnection = (io, socket, next) => {
         if (!token) return next(new Error("Unauthorized"));
 
         const decoded = jwt.verify(token, JWT_SECRET);
-        socket._userId = decoded.userId;
+        socket._userId = decoded._id;
+        socket._sName = decoded.sName;
         next();
     } catch (err) {
         next(new Error("Unauthorized"));
     }
 };
 
-
-const fnConnection = (socket) => {
+const fnConnection = (io, socket) => {
     socketIds[socket._userId] = socket.id;
     logger.info(`Socket connected: userId=${socket._userId}, socketId=${socket.id}`);
 
-    socket.on("joinPublicGame", (data, callback) => {
-        logger.info(`joinPublicGame from userId=${socket._userId}:`, data);
-        socket.broadcast.emit("serverMessage", data);
-        if (typeof callback === "function") callback({ status: "works", data });
-    });
+    socket.on(SOCKET_EVENTS.ludo_pub_room, (data, callback) => joinController.fnJoinPublicGame(io, socket, data, callback));
+    socket.on(SOCKET_EVENTS.ludo_pri_room, (data, callback) => joinController.fnJoinPrivateGame(io, socket, data, callback));
 
-    socket.on("joinPrivateGame", (data, callback) => {
-        logger.info(`joinPrivateGame from userId=${socket._userId}:`, data);
-        socket.broadcast.emit("serverMessage", data);
-        if (typeof callback === "function") callback({ status: "works", data });
-    });
-
-    socket.on("disconnect", () => _fnSocketCleanup(socket));
+    socket.on("disconnect", () => _fnSocketCleanup(io, socket));
     socket.on("error", (err) => {
         logger.error(`Socket error: userId=${socket._userId}`, err);
-        _fnSocketCleanup(socket);
+        _fnSocketCleanup(io, socket);
     });
 };
 
-const _fnSocketCleanup = (socket) => {
+const _fnSocketCleanup = (io, socket) => {
     try {
         delete socketIds[socket._userId];
         logger.info(`Socket disconnected: userId=${socket._userId}`);
@@ -54,4 +44,5 @@ const _fnSocketCleanup = (socket) => {
         logger.error("Socket cleanup error", err);
     }
 };
+
 module.exports = { fnPreConnection, fnConnection, socketIds };

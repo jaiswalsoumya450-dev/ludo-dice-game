@@ -40,16 +40,21 @@
       Real Time Multiplayer
     </div>
 
-    <!-- Room code -->
-    <div id="room-code" class="bg-[#0d1e4d] border border-blue-800 text-yellow-400 font-bold text-lg tracking-[0.25em] px-6 py-2 rounded-full min-w-[12rem] text-center">
-      --------
-    </div>
 
     <!-- Status message (starting / cancelled) -->
     <p id="room-status-msg" class="hidden text-sm text-yellow-300 font-medium text-center max-w-xs"></p>
 
-    <!-- Players + timer -->
-    <div id="players-wrap" class="flex flex-col items-center gap-5 w-full max-w-xs"></div>
+    <!-- Timer -->
+    <div class="flex items-center justify-center gap-2 bg-[#0d1e4d] border-2 border-yellow-400 rounded-full px-5 py-2 text-yellow-300 font-bold text-lg">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" stroke-width="2"/>
+        <path stroke-linecap="round" stroke-width="2" d="M12 7v5l3 3"/>
+      </svg>
+      <span id="timer-text">--:--</span>
+    </div>
+
+    <!-- Players -->
+    <div id="players-wrap" class="grid grid-cols-1 gap-4 w-full max-w-xs place-items-center"></div>
 
     <!-- Cancel -->
     <button id="leave-btn" class="mt-2 flex items-center gap-2 bg-black bg-opacity-40 border border-red-500 text-red-400 rounded-full px-6 py-2 text-sm font-medium hover:bg-red-900 hover:bg-opacity-30 transition">

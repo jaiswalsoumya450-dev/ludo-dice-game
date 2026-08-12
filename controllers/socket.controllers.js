@@ -33,10 +33,10 @@ async function fnJoinGame(socket, data) {
             kPass: redisUser.kPass,
             eGameType: body.eGameType,
             eRoomMode: body.eRoomMode,
-            iLobbyId: body.iLobbyId
+            lobbyId: body.lobbyId
         });
 
-    if(lobbyData.iLobbyChips < 0) {
+    if(lobbyData.lobbyChips < 0) {
         throw new Error("Invalid lobby chips");
     }
 }

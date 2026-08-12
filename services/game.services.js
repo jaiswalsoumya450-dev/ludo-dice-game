@@ -8,15 +8,11 @@ const WAITING_MS = 30000;
 
 const rooms = new Map(); // gameId -> room
 
-const fnGenerateRoomCode = () =>
-  String(Math.floor(10000000 + Math.random() * 90000000));
-
 const fnGenerateGameId = () =>
   `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 const fnPublicRoomState = (room) => ({
   gameId: room.gameId,
-  roomCode: room.roomCode,
   eRoomMode: room.eRoomMode,
   maxPlayers: room.maxPlayers,
   roomStatus: room.status,
@@ -61,7 +57,6 @@ function fnFindPlayerWaitingRoom(eRoomMode, userId) {
 function fnCreateRoom({ eRoomMode, maxPlayers, lobbyChips }) {
   const room = {
     gameId: fnGenerateGameId(),
-    roomCode: fnGenerateRoomCode(),
     eRoomMode,
     maxPlayers,
     lobbyChips,
@@ -100,31 +95,10 @@ function fnJoinPublicGame({ userId, sName, sImage, maxPlayers, lobbyChips }) {
   return fnAddPlayer(room, { userId, sName, sImage });
 }
 
-function fnJoinPrivateGame({
-  userId,
-  sName,
-  sImage,
-  maxPlayers,
-  lobbyChips,
-  roomCode,
-}) {
-  let room;
-  if (roomCode) {
-    room = Array.from(rooms.values()).find(
-      (r) =>
-        r.eRoomMode === "Private" &&
-        r.roomCode === roomCode &&
-        r.status === "waiting",
-    );
-    if (!room) throw { status: 404, message: "Room not found." };
-    if (!room.players.has(userId) && room.players.size >= room.maxPlayers) {
-      throw { status: 400, message: "Room is full." };
-    }
-  } else {
-    room =
-      fnFindPlayerWaitingRoom("Private", userId) ||
-      fnCreateRoom({ eRoomMode: "Private", maxPlayers, lobbyChips });
-  }
+function fnJoinPrivateGame({ userId, sName, sImage, maxPlayers, lobbyChips }) {
+  const room =
+    fnFindPlayerWaitingRoom("Private", userId) ||
+    fnCreateRoom({ eRoomMode: "Private", maxPlayers, lobbyChips });
   return fnAddPlayer(room, { userId, sName, sImage });
 }
 
