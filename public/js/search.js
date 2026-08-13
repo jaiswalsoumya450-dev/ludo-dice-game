@@ -56,6 +56,7 @@ $(document).ready(function () {
     });
   });
 
+  //reroute back to main if enough players didnt join
   function _fnLeaveToMain(message) {
     clearInterval(countdownInterval);
     $("#room-status-msg").removeClass("hidden").text(message);

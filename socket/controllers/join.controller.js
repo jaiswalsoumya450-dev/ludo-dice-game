@@ -1,239 +1,113 @@
 "use strict";
-import { redisOps, redisClientUser, redisKeys } from "../utils/redis";
 
-const redisKeys = require("./socket/utils/redis");
+const gameServices = require("../../services/game.services");
+const SOCKET_EVENTS = require("../socket.events");
 
-const SOCKET_EVENTS = require("./socket.events");
+const _fnClampMaxPlayers = (value) =>
+  Math.min(4, Math.max(2, Number(value) || 2));
 
-const fnLudoPublic = async (socket, body) => {
-  try {
-    const _userId = socket._userId || "";
-    const redisUser = await redisOps.fnRedisHGETALL(
-      redisClientUser,
-      redisKeys.fnRedisUserKey(_userId),
-    );
+const _fnBroadcastRoom = (io, room) => {
+  io.to(room.gameId).emit(SOCKET_EVENTS.room_update, gameServices.fnPublicRoomState(room));
+};
 
-    if (!redisUser)
-      throw {
-        status: 401,
-        message: "restart_app",
-      };
+const _fnHandleRoomExpired = (io) => (room) => {
+  io.to(room.gameId).emit(SOCKET_EVENTS.room_cancelled, {
+    message: "Not enough players joined in time.",
+  });
+};
 
-    body = _.pick(body, ["maxPlayers", "lobbyChips"]);
-    body.eGameType = "LUDO";
-    body.eRoomMode = "Public";
-    body.maxPlayers = Number(body.maxPlayers) || 2;
-    body._userId = _userId;
-    body.sName = redisUser.sName || "Player";
-    body.sImage = redisUser.sImage || "0";
+const _fnJoinRoom = (io, socket, room) => {
+  socket.join(room.gameId);
+  socket._gameId = room.gameId;
 
-    if (body.lobbyChips > (Number(redisUser.nTotalChips) || 0)) {
-      throw {
-        status: 400,
-        message: "You do not have enough chips to join the game!",
-      };
-    }
+  _fnBroadcastRoom(io, room);
 
-    // Initialize game variables
-    // New game set by default
-    let newGame = true;
-    let waitingTimer;
-    let gamePlayers = Object.create(null);
-    let redisGameKey;
-    let redisGamePlayerKey;
-    let gameData;
-
-    // will have unique attributes a game has
-    const keyWaitingGame = redisKeys.fnKeyWaitingGame({
-      eGameType: body.eGameType,
-      eRoomMode: body.eRoomMode,
-      iMaxPlayer: body.maxPlayers,
-      lobbyChips: body.lobbyChips,
-    });
-
-    let _gameId = await redisOps.fnRedisSRANDMEMBER(
-      redisClientUser,
-      keyWaitingGame,
-    );
-
-    //if we find an existing game, try and join
-    if (_gameId) {
-      redisGameKey = redisKeys.fnRedisGameKey(_gameId);
-
-      try {
-        gameData = await redisOps.fnRedisHGETALL(redisClientUser, redisGameKey);
-        if (!gameData || !gameData._id) {
-          redisOps.fnRedisSREM(redisClientUser, keyWaitingGame, _gameId);
-          throw "invalid_game";
-        }
-
-        body.maxPlayers = Number(gameData.iMaxPlayer);
-        gameData.iTotalPlayer = Number(gameData.iTotalPlayer);
-
-        redisGamePlayerKey = redisKeys.fnRedisGamePlayerKey(_gameId);
-        gamePlayers =
-          (await redisOps.fnRedisHGETALL(
-            redisClientUser,
-            redisGamePlayerKey,
-          )) || Object.create(null);
-
-        //if player is not already in the game, add them to the game
-        if (!gamePlayers[_userId]) {
-          if (gameData.iTotalPlayer >= body.iMaxPlayer) throw "game_full";
-
-          let result = await redisOps.fnRedisHINCRBYAtomic(
-            redisClientUser,
-            redisGameKey,
-            "iTotalPlayer",
-            1,
-          );
-          gameData.iTotalPlayer = Number(result[0]) || 0;
-
-          // Handle race condition
-          if (gameData.iTotalPlayer > body.iMaxPlayer) {
-            redisOps.fnRedisHSET(
-              redisClientUser,
-              redisGameKey,
-              "iTotalPlayer",
-              body.iMaxPlayer,
-            );
-            throw "race_condition";
-          }
-        }
-        redisClientUser.quit();
-        newGame = false;
-      } catch (err) {
-        redisClientUser.quit();
-        gamePlayers = Object.create(null);
-      }
-    }
-
-    //create a new game if needed
-    if (newGame) {
-      waitingTimer = setTimeout(currentGame, 30000);
-      gameData = await gameServices.fnRedisSaveNewGame({
-        body,
-        waitingTimer,
-      });
-
-      _gameId = gameData._id;
-      redisGamePlayerKey = redisKeys.fnRedisGamePlayerKey(_gameId);
-    } else {
-      waitingTimer = setTimeout(currentGame, 30000);
-    }
-
-    //handle new vs existing game
-    if (newGame) {
-      const currentGame = gameServices.fnCreateNewGameObject(gameData);
-      setTimeout(currentGame, 30000);
-
-      // Add to waiting games
-      redisOps.fnRedisSADD(
-        redisClientGameSA,
-        keyWaitingGame,
-        _gameId.toString(),
-      );
-
-      // Initialize game
-      setTimeout(
-        () =>
-          socket.emit(
-            SOCKET_EVENTS.gameInit,
-            aes.fnEncrypt(redisSchemaGame.fnGetGameWaitingSchema(gameData)),
-          ),
-        100,
-      );
-    } else if (gameData.iTotalPlayer == body.iMaxPlayer) {
-      // game full - start game
-      const waitingGameRemoved =
-        await gameServices.fnRedisRemoveWaitingGame(gameData);
-
-      setTimeout(() => {
-        gameServices.fnPublishEvent({
-          PS: gameData.PS,
-          channel: gameData._id,
-          e: SOCKET_EVENTS.gameInit,
-          d: redisSchemaGame.fnGetGameWaitingSchema(gameData),
-        });
-
-        const currentGame = gameServices.fnCreateNewGameObject(gameData);
-        return currentGame.roundInitialize(
-          constants.ROUND_INIT_TIMEOUT,
-          true,
-          waitingGameRemoved,
-        );
-      }, 100);
-    } else {
-      // Waiting for more players
-      setTimeout(
-        () =>
-          gameServices.fnPublishEvent({
-            PS: gameData.PS,
-            channel: gameData._id,
-            e: SOCKET_EVENTS.gameInit,
-            d: redisSchemaGame.fnGetGameWaitingSchema(gameData),
-          }),
-        100,
-      );
-    }
-
-    // Return success response
-    const output = {
-      status: 200,
-      _gameId,
-      waitingTimer,
-    };
-  } catch (err) {
-    if (!err.status) {
-      logger.warn("LUDO public room ERROR", err);
-      const status = err.status || 404;
-      const message = err.message || "something_went_wrong";
-      throw cb(aes.fnEncrypt({ status, message, ...(err.data || {}) }));
-    }
+  if (room.players.size >= room.maxPlayers) {
+    gameServices.fnMarkRoomStarting(room);
+    io.to(room.gameId).emit(SOCKET_EVENTS.room_starting, gameServices.fnPublicRoomState(room));
   }
 };
 
-const fnLudoPrivate = async (socket, body) => {
+function fnJoinPublicGame(io, socket, data, callback) {
+  callback = typeof callback === "function" ? callback : () => {};
   try {
-    const _userId = socket._userId || "";
+    const maxPlayers = _fnClampMaxPlayers(data && data.maxPlayers);
+    const lobbyChips = Number(data && data.lobbyChips) || 0;
 
-    // Get user data from redis
-    const redisUser = await redisOps.fnRedisHGETALL(
-      redisClientUser,
-      redisKeys.fnRedisUserKey(_userId),
+    const room = gameServices.fnJoinPublicGame(
+      {
+        userId: socket._userId,
+        sName: socket._sName,
+        maxPlayers,
+        lobbyChips,
+      },
+      _fnHandleRoomExpired(io),
     );
 
-    // Validate user exists and is not blocked
-    if (!redisUser) throw { status: 401, message: "restart_app" };
-
-    body = body._pick(body, ["maxPlayers", "lobbyId", "vPrivateCode"]);
-
-    body.eGameType = "LUDO";
-    body.eRoomMode = "Private";
-    body.sName = redisUser.sName || "Player";
-    body._userId = _userId;
-    body.sImage = redisUser.sImage || "0";
-    body.ip = redisUser.ip || null;
-    const maxPlayers = body.maxPlayers;
-
-    if (body.lobbyChips > (Number(redisUser.nTotalChips) || 0)) {
-      throw {
-        status: 400,
-        message: "You do not have enough chips to join the game!",
-      };
-    }
-
-    await gameServices.fnAddPlayerGameList({
-      _userId,
-      maxPlayers,
-    });
+    _fnJoinRoom(io, socket, room);
+    callback({ status: 200, ...gameServices.fnPublicRoomState(room) });
   } catch (err) {
+    logger.warn("joinPublicGame error", err);
+    callback({ status: 500, message: "Could not join a game. Try again." });
+  }
+}
+
+function fnJoinPrivateGame(io, socket, data, callback) {
+  callback = typeof callback === "function" ? callback : () => {};
+  try {
+    const maxPlayers = _fnClampMaxPlayers(data && data.maxPlayers);
+    const lobbyChips = Number(data && data.lobbyChips) || 0;
+
+    const room = gameServices.fnJoinPrivateGame(
+      {
+        userId: socket._userId,
+        sName: socket._sName,
+        maxPlayers,
+        lobbyChips,
+      },
+      _fnHandleRoomExpired(io),
+    );
+
+    _fnJoinRoom(io, socket, room);
+    callback({ status: 200, ...gameServices.fnPublicRoomState(room) });
     if (!err.status) {
       logger.warn("LUDO private room ERROR", err);
       const status = err.status || 404;
       const message = err.message || "something_went_wrong";
-    }
+    };
+  } catch (err) {
+    logger.warn("joinPrivateGame error", err);
+    callback({ status: 500, message: "Could not create a game. Try again." });
   }
-};
+}
 
-module.exports = {fnLudoPublic, fnLudoPrivate}
+function fnRejoinRoom(io, socket, data, callback) {
+  callback = typeof callback === "function" ? callback : () => {};
+  const gameId = data && data.gameId;
+  const room = gameId ? gameServices.fnGetRoom(gameId) : null;
+
+  if (!room || !room.players.has(socket._userId)) {
+    callback({ status: 404, message: "This game is no longer available." });
+    return;
+  }
+
+  socket.join(room.gameId);
+  socket._gameId = room.gameId;
+  callback({ status: 200, ...gameServices.fnPublicRoomState(room) });
+}
+
+function fnLeaveRoom(io, socket, data, callback) {
+  callback = typeof callback === "function" ? callback : () => {};
+  const gameId = (data && data.gameId) || socket._gameId;
+
+  if (gameId) {
+    const room = gameServices.fnRemovePlayer(gameId, socket._userId);
+    socket.leave(gameId);
+    if (room) _fnBroadcastRoom(io, room);
+  }
+
+  socket._gameId = null;
+  callback({ status: 200 });
+}
+
+module.exports = { fnJoinPublicGame, fnJoinPrivateGame, fnRejoinRoom, fnLeaveRoom };

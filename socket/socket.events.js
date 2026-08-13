@@ -1,6 +1,11 @@
 "use strict";
 
 module.exports = {
-    ludo_pub_room : "Ludo_Public_Room",
-    ludo_pri_room : "Ludo_Private_Room"
+    join_public_room: "joinPublicGame",
+    join_private_room: "joinPrivateGame",
+    rejoin_room: "rejoinRoom",
+    leave_room: "leaveRoom",
+    room_update: "roomUpdate",
+    room_starting: "roomStarting",
+    room_cancelled: "roomCancelled"
 };

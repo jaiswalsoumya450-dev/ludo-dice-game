@@ -109,7 +109,7 @@ $(document).ready(function () {
       return;
     }
 
-    socket.emit("joinPublicGame", { maxPlayers, lobbyAmt }, (response) => {
+    socket.emit("joinPublicGame", { maxPlayers, lobbyChips: lobbyAmt }, (response) => {
       if (response && response.status === 200) {
         localStorage.setItem("activeGame", JSON.stringify(response));
         window.location.href = "/web/search";
@@ -142,7 +142,7 @@ $(document).ready(function () {
       return;
     }
 
-    socket.emit("joinPrivateGame", { maxPlayers, lobbyAmt }, (response) => {
+    socket.emit("joinPrivateGame", { maxPlayers, lobbyChips: lobbyAmt }, (response) => {
       if (response && response.status === 200) {
         localStorage.setItem("activeGame", JSON.stringify(response));
         window.location.href = "/web/search";

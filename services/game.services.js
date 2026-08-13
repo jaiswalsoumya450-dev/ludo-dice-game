@@ -54,7 +54,7 @@ function fnFindPlayerWaitingRoom(eRoomMode, userId) {
   return null;
 }
 
-function fnCreateRoom({ eRoomMode, maxPlayers, lobbyChips }) {
+function fnCreateRoom({ eRoomMode, maxPlayers, lobbyChips }, onExpire) {
   const room = {
     gameId: fnGenerateGameId(),
     eRoomMode,
@@ -63,9 +63,26 @@ function fnCreateRoom({ eRoomMode, maxPlayers, lobbyChips }) {
     status: "waiting",
     players: new Map(),
     expiresAt: Date.now() + WAITING_MS,
+    timer: null,
   };
   rooms.set(room.gameId, room);
+
+  if (typeof onExpire === "function") {
+    room.timer = setTimeout(() => {
+      if (room.status !== "waiting") return;
+      rooms.delete(room.gameId);
+      onExpire(room);
+    }, WAITING_MS);
+  }
+
   return room;
+}
+
+function fnClearRoomTimer(room) {
+  if (room && room.timer) {
+    clearTimeout(room.timer);
+    room.timer = null;
+  }
 }
 
 function fnAddPlayer(room, { userId, sName, sImage }) {
