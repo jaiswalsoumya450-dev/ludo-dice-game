@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DIE-THROW! — Gameplay</title>
+  <link rel="icon" type="image/png" href="/dice.avif">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    const NODE_ENV = "<%= NODE_ENV %>";
+    const MISC_BASE_URL = "<%= MISC_BASE_URL %>";
+  </script>
+  <style>
+    body {
+      background: radial-gradient(ellipse at 50% 35%, #1e3799 0%, #0a1628 65%);
+      min-height: 100vh;
+    }
+
+    .pip {
+      background: #16305c;
+      border-radius: 9999px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .pip.on { opacity: 1; }
+
+    #dice-btn.playable:active { transform: scale(0.95); }
+  </style>
+</head>
+<body class="min-h-screen text-white relative">
+
+  <!-- Leave -->
+  <button id="leave-btn" class="fixed top-5 left-5 flex items-center gap-2 bg-black bg-opacity-40 border border-red-500 text-red-400 rounded-full px-4 py-2 text-xs sm:text-sm font-medium hover:bg-red-900 hover:bg-opacity-30 transition z-20">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+    Leave
+  </button>
+
+  <div class="min-h-screen flex flex-col items-center justify-center px-4 py-16 gap-12">
+
+    <!-- Player cards -->
+    <div id="players-wrap" class="flex flex-wrap items-center justify-center gap-4 w-full max-w-3xl"></div>
+
+    <!-- Dice area -->
+    <div id="dice-area" class="flex flex-col items-center gap-4">
+      <div id="dice-btn" class="w-40 h-40 sm:w-48 sm:h-48 bg-gradient-to-br from-white to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center select-none transition">
+        <div id="dice-pips" class="grid grid-cols-3 grid-rows-3 gap-3 w-24 h-24 sm:w-28 sm:h-28 place-items-center"></div>
+      </div>
+      <p id="dice-hint" class="text-gray-300 text-sm sm:text-base font-medium">Tap the dice to roll</p>
+    </div>
+
+    <!-- Game over panel -->
+    <div id="gameover-panel" class="hidden flex-col items-center gap-4 bg-[#0d1e4d] border-2 border-yellow-400 rounded-2xl px-10 py-8 max-w-sm text-center shadow-2xl">
+      <p id="gameover-title" class="text-2xl font-extrabold"></p>
+      <button id="back-to-main-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2 rounded-lg text-sm transition">Back to Main</button>
+    </div>
+  </div>
+
+  <!-- Help -->
+  <button id="help-btn" class="fixed bottom-6 right-6 w-11 h-11 rounded-full bg-black bg-opacity-50 border border-gray-600 text-gray-300 text-lg font-bold flex items-center justify-center hover:bg-opacity-70 transition z-20">?</button>
+  <div id="help-popover" class="hidden fixed bottom-20 right-6 w-64 bg-gray-900 border border-gray-700 rounded-xl p-4 text-sm text-gray-300 z-20 shadow-xl">
+    Take turns tapping the dice. First player to reach <span class="text-yellow-300 font-semibold">100</span> wins!
+  </div>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="/js/constants.js"></script>
+  <script src="/v1/socket.io/socket.io.js"></script>
+  <script src="/js/gameplay.js"></script>
+</body>
+</html>

@@ -15,6 +15,11 @@ $(document).ready(function () {
     return;
   }
 
+  // the room can already be full/playing by the time this page loads (the
+  // player whose join filled the room isn't listening for "roomStarting"
+  // yet — they're still on /web/main when it fires), so check up front too.
+  if (_fnMaybeGoToGameplay(game)) return;
+
   const socket = io({ path: `/${CODE_VERSION}/socket.io`, auth: { token } });
 
   let countdownInterval = null;
@@ -30,6 +35,7 @@ $(document).ready(function () {
       }
       game = response;
       localStorage.setItem("activeGame", JSON.stringify(game));
+      if (_fnMaybeGoToGameplay(game)) return;
       renderRoom(game);
     });
   });
@@ -42,7 +48,11 @@ $(document).ready(function () {
 
   socket.on("roomStarting", function (state) {
     game = state;
+    localStorage.setItem("activeGame", JSON.stringify(game));
     renderRoom(game, { starting: true });
+    setTimeout(function () {
+      window.location.href = "/web/gameplay";
+    }, 1200);
   });
 
   socket.on("roomCancelled", function (payload) {
@@ -123,6 +133,15 @@ $(document).ready(function () {
     }
     tick();
     countdownInterval = setInterval(tick, 1000);
+  }
+
+  function _fnMaybeGoToGameplay(state) {
+    if (state && (state.roomStatus === "playing" || state.roomStatus === "finished")) {
+      localStorage.setItem("activeGame", JSON.stringify(state));
+      window.location.href = "/web/gameplay";
+      return true;
+    }
+    return false;
   }
 
   function _fnReadActiveGame() {

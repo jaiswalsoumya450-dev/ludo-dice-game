@@ -20,11 +20,11 @@ const _fnJoinRoom = (io, socket, room) => {
   socket.join(room.gameId);
   socket._gameId = room.gameId;
 
-  _fnBroadcastRoom(io, room);
-
   if (room.players.size >= room.maxPlayers) {
-    gameServices.fnMarkRoomStarting(room);
-    io.to(room.gameId).emit(SOCKET_EVENTS.room_starting, gameServices.fnPublicRoomState(room));
+    gameServices.fnStartGame(room);
+    io.to(room.gameId).emit(SOCKET_EVENTS.room_starting, gameServices.fnPublicGameState(room));
+  } else {
+    _fnBroadcastRoom(io, room);
   }
 };
 
@@ -70,11 +70,6 @@ function fnJoinPrivateGame(io, socket, data, callback) {
 
     _fnJoinRoom(io, socket, room);
     callback({ status: 200, ...gameServices.fnPublicRoomState(room) });
-    if (!err.status) {
-      logger.warn("LUDO private room ERROR", err);
-      const status = err.status || 404;
-      const message = err.message || "something_went_wrong";
-    };
   } catch (err) {
     logger.warn("joinPrivateGame error", err);
     callback({ status: 500, message: "Could not create a game. Try again." });
@@ -101,9 +96,18 @@ function fnLeaveRoom(io, socket, data, callback) {
   const gameId = (data && data.gameId) || socket._gameId;
 
   if (gameId) {
+    const roomBeforeLeave = gameServices.fnGetRoom(gameId);
+    const wasPlaying = roomBeforeLeave && roomBeforeLeave.status === "playing" && roomBeforeLeave.players.size === 2;
+
     const room = gameServices.fnRemovePlayer(gameId, socket._userId);
     socket.leave(gameId);
-    if (room) _fnBroadcastRoom(io, room);
+
+    if (room && wasPlaying) {
+      gameServices.fnEndGameByForfeit(room, socket._userId);
+      io.to(room.gameId).emit(SOCKET_EVENTS.dice_rolled, { roll: null, ...gameServices.fnPublicGameState(room) });
+    } else if (room) {
+      _fnBroadcastRoom(io, room);
+    }
   }
 
   socket._gameId = null;

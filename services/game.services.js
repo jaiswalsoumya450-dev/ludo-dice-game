@@ -22,6 +22,22 @@ const fnPublicRoomState = (room) => ({
   ),
 });
 
+const fnPublicGameState = (room) => ({
+  gameId: room.gameId,
+  eRoomMode: room.eRoomMode,
+  maxPlayers: room.maxPlayers,
+  roomStatus: room.status,
+  target: room.target,
+  turnUserId: room.playerOrder ? room.playerOrder[room.turnIndex] : null,
+  winnerId: room.winnerId || null,
+  players: Array.from(room.players.values()).map(({ userId, sName, sImage }) => ({
+    userId,
+    sName,
+    sImage,
+    score: (room.scores && room.scores[userId]) || 0,
+  })),
+});
+
 const fnGetRoom = (gameId) => rooms.get(gameId) || null;
 
 const fnDeleteRoom = (gameId) => rooms.delete(gameId);
@@ -105,6 +121,57 @@ function fnRemovePlayer(gameId, userId) {
   return room;
 }
 
+function fnMarkRoomStarting(room) {
+  fnClearRoomTimer(room);
+  room.status = "starting";
+  return room;
+}
+
+function fnStartGame(room) {
+  fnClearRoomTimer(room);
+  room.status = "playing";
+  room.playerOrder = Array.from(room.players.keys());
+  room.scores = {};
+  room.playerOrder.forEach((userId) => {
+    room.scores[userId] = 0;
+  });
+  room.turnIndex = 0;
+  room.target = 100;
+  room.winnerId = null;
+  return room;
+}
+
+function fnRollDice(room, userId) {
+  if (room.status !== "playing") {
+    const err = new Error("This game is not active.");
+    err.status = 400;
+    throw err;
+  }
+  if (room.playerOrder[room.turnIndex] !== userId) {
+    const err = new Error("It's not your turn.");
+    err.status = 400;
+    throw err;
+  }
+
+  const roll = Math.floor(Math.random() * 6) + 1;
+  room.scores[userId] = Math.min(room.target, room.scores[userId] + roll);
+
+  if (room.scores[userId] >= room.target) {
+    room.status = "finished";
+    room.winnerId = userId;
+  } else {
+    room.turnIndex = (room.turnIndex + 1) % room.playerOrder.length;
+  }
+
+  return { room, roll };
+}
+
+function fnEndGameByForfeit(room, leavingUserId) {
+  room.status = "finished";
+  room.winnerId = (room.playerOrder || []).find((id) => id !== leavingUserId) || null;
+  return room;
+}
+
 function fnJoinPublicGame({ userId, sName, sImage, maxPlayers, lobbyChips }) {
   let room = fnFindPlayerWaitingRoom("Public", userId);
   if (!room) room = fnFindOpenPublicRoom(maxPlayers, lobbyChips);
@@ -127,4 +194,9 @@ module.exports = {
   fnGetRoom,
   fnDeleteRoom,
   fnPublicRoomState,
+  fnPublicGameState,
+  fnMarkRoomStarting,
+  fnStartGame,
+  fnRollDice,
+  fnEndGameByForfeit,
 };

@@ -7,6 +7,7 @@ module.exports = function () {
     router.post('/login', fnPostLogin);
     router.get('/main', fnMain);
     router.get('/search', fnSearch);
+    router.get('/gameplay', fnGameplay);
     return router;
 };
 
@@ -47,6 +48,18 @@ const fnMain = (req, res) => {
 const fnSearch = (req, res) => {
     try {
         res.render('../public/views/scene/search', {
+            "MISC_BASE_URL": "http://127.0.0.1:3001",
+            "NODE_ENV": "development"
+        });
+    } catch (err) {
+        res.status(500).send('Error');
+    }
+};
+
+// for the live gameplay page
+const fnGameplay = (req, res) => {
+    try {
+        res.render('../public/views/scene/gameplay', {
             "MISC_BASE_URL": "http://127.0.0.1:3001",
             "NODE_ENV": "development"
         });
