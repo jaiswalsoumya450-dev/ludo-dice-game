@@ -1,5 +1,7 @@
 "use strict";
 
+const { room_update } = require("../../socket/socket.events");
+
 $(document).ready(function () {
   const token = localStorage.getItem("token");
   const _id = localStorage.getItem("_id");
