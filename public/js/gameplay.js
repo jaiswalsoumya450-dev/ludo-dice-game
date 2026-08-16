@@ -18,6 +18,7 @@ $(document).ready(function () {
   const socket = io({ path: `/${CODE_VERSION}/socket.io`, auth: { token } });
 
   let rolling = false;
+  let spinInterval = null;
 
   const PIP_LAYOUT = {
     0: [5],
@@ -30,6 +31,7 @@ $(document).ready(function () {
   };
 
   // render immediately from the cached room-starting payload to avoid a flash of emptiness
+  renderDicePips(0);
   renderGame(game);
 
   socket.on("connect", function () {
@@ -63,12 +65,15 @@ $(document).ready(function () {
 
     rolling = true;
     $("#dice-hint").text("Rolling...");
+    startSpin(); // spin immediately so the tap feels instant; the broadcast below settles it on the real value
     socket.emit("rollDice", { gameId: game.gameId }, function (response) {
       if (!response || response.status !== 200) {
         rolling = false;
+        stopSpin();
+        renderDicePips(0);
         $("#dice-hint").text((response && response.message) || "Could not roll. Try again.");
       }
-      // on success, the "diceRolled" broadcast drives the animation + render
+      // on success, the "diceRolled" broadcast drives the settle animation + render
     });
   });
 
@@ -99,10 +104,26 @@ $(document).ready(function () {
     }
   }
 
+  function startSpin() {
+    stopSpin();
+    spinInterval = setInterval(function () {
+      renderDicePips(1 + Math.floor(Math.random() * 6));
+    }, 80);
+  }
+
+  function stopSpin() {
+    if (spinInterval) {
+      clearInterval(spinInterval);
+      spinInterval = null;
+    }
+  }
+
   function animateRoll(finalValue, done) {
     rolling = true;
+    stopSpin();
+    $("#dice-hint").text("Rolling...");
     let ticks = 0;
-    const maxTicks = 10;
+    const maxTicks = 6;
     const interval = setInterval(function () {
       renderDicePips(1 + Math.floor(Math.random() * 6));
       ticks++;
@@ -140,8 +161,6 @@ $(document).ready(function () {
       .toggleClass("playable", myTurn)
       .toggleClass("opacity-50 cursor-not-allowed", !myTurn)
       .toggleClass("cursor-pointer", myTurn);
-
-    if (!rolling) renderDicePips(0);
   }
 
   function buildPlayerCard(player, state) {
