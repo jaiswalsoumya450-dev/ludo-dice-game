@@ -190,8 +190,6 @@ $(document).ready(function () {
 
   function showPublicPopup() {
     $("#pub-popup-msg").addClass("hidden").text("");
-    $("#pub-max-players").val("");
-    $("#pub-lobby-amt").val("");
     $("#pub-popup-overlay").addClass("open");
   }
 
@@ -205,8 +203,6 @@ $(document).ready(function () {
 
   function showPrivatePopup() {
     $("#pri-popup-msg").addClass("hidden").text("");
-    $("#pri-max-players").val("");
-    $("#pri-lobby-amt").val("");
     $("#pri-popup-overlay").addClass("open");
   }
 
