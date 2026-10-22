@@ -21,7 +21,7 @@ async function fnGuestLogin(req, res) {
         const user = await authService.fnGuestLogin({ did, sName });
 
         //cache user in Redis immediately after login
-        await redisCache.fnRedisGetUser(user);
+        await redisCache.fnRedisGetUser(user._id);
 
         //create a JWT token for the user
         const token = jwt.sign(

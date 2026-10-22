@@ -1,17 +1,19 @@
 "use strict";
 
+const _ = require('lodash');
+
 const fnGetPlayerSchema = (data = {}) => {
-  let playerData = Object.create(null);
-  if (playerData._id) {
-    playerData._id = data._id.toString() || null;
+  const playerData = Object.create(null);
+  if (data._id) {
+    playerData._id = data._id.toString();
   }
 
   playerData.sName = data.sName || null;
   playerData.sImage = data.sImage || null;
-  if (playerData.chips) {
-    playerData.chips = data.chips.toString() || 0;
+  if (data.chips != null) {
+    playerData.chips = data.chips.toString();
   }
-  return _.pick(data, ['_id', 'sName', 'sImage', 'chips']);
+  return _.pick(playerData, ['_id', 'sName', 'sImage', 'chips']);
 };
 
 module.exports = { fnGetPlayerSchema };

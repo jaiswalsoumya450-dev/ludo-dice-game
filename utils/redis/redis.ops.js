@@ -107,6 +107,40 @@ const fnRedisSETEX = (client, key, ttl = 600, value) => client.setex(key, ttl, v
 const fnRedisSETNX = (client, key, value) => client.setnx(key, value);
 const fnRedisSETEXNX = (client, key, value, ttl = 60) => client.set(key, value, 'NX', 'EX', ttl);
 
+// Atomic compare-and-swap: writes `newValue` to `key` only if the value currently
+// stored there is still exactly `expectedOld` (the raw string a caller last read
+// via GET). Returns true on success, false if someone else wrote to the key first
+// (the caller should re-read and retry). This is what makes read-modify-write
+// sequences against Redis (e.g. "load a game room, apply a move, save it back")
+// safe under concurrent writers without needing WATCH/MULTI on a dedicated
+// connection or a game-logic-specific Lua script.
+const _fnEnsureCasCommand = (client) => {
+    if (client._hasCasSetCommand) return;
+    client.defineCommand('casSet', {
+        numberOfKeys: 1,
+        lua: [
+            "local current = redis.call('GET', KEYS[1])",
+            "if current == ARGV[1] then",
+            "  if tonumber(ARGV[3]) > 0 then",
+            "    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
+            "  else",
+            "    redis.call('SET', KEYS[1], ARGV[2])",
+            "  end",
+            "  return 1",
+            "else",
+            "  return 0",
+            "end",
+        ].join("\n"),
+    });
+    client._hasCasSetCommand = true;
+};
+
+const fnRedisCasSet = async (client, key, expectedOld, newValue, ttlSeconds = 0) => {
+    _fnEnsureCasCommand(client);
+    const result = await client.casSet(key, expectedOld, newValue, ttlSeconds);
+    return result === 1;
+};
+
 const fnRedisSADD = (client, key, value) => client.sadd(key, value);
 const fnRedisSMEMBERS = (client, key) => client.smembers(key);
 const fnRedisSRANDMEMBER = (client, key) => client.srandmember(key);
@@ -427,6 +461,7 @@ module.exports = {
     fnRedisSETEX,
     fnRedisSETNX,
     fnRedisSETEXNX,
+    fnRedisCasSet,
 
     fnRedisSADD,
     fnRedisSMEMBERS,

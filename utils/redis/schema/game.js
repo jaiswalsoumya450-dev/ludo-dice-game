@@ -1,10 +1,12 @@
 "use strict";
 
+const _ = require('lodash');
+
 // running/playing, waiting, destroyed, abandoned, completed/finished
 
 const fnGetGameSchema = (data = {}) => {
-  let gameData = Object.create(null);
-  gameData._id = data._id.toString() || null;
+  const gameData = Object.create(null);
+  gameData._id = data._id ? data._id.toString() : null;
   gameData.sName = data.sName || null;
   gameData.sImage = data.sImage || null;
   gameData.status = data.status || "waiting";
@@ -12,19 +14,19 @@ const fnGetGameSchema = (data = {}) => {
 };
 
 const fnSetGameSchema = (gameData, data = {}) => {
-    data = _.pick(gameData, ['_id', 'sName', 'sImage', 'status']);
-    if(gameData._id) {
-        gameData._id = data._id.toString();
+    const patch = _.pick(data, ['_id', 'sName', 'sImage', 'status']);
+    if (patch._id != null) {
+        gameData._id = patch._id.toString();
     }
-    if(gameData.sName) {
-        gameData.sName = data.sName;
+    if (patch.sName != null) {
+        gameData.sName = patch.sName;
     }
-    if(gameData.sImage) {
-        gameData.sImage = data.sImage;
+    if (patch.sImage != null) {
+        gameData.sImage = patch.sImage;
     }
-    if(gameData.status) {
-        gameData.status = data.status;
-    }   
+    if (patch.status != null) {
+        gameData.status = patch.status;
+    }
     return gameData;
 }
 

@@ -25,6 +25,8 @@ $(document).ready(function () {
   fetchUser(function (user) {
     setName(user.sName);
     localStorage.setItem("sName", user.sName);
+    setChips(user.chips);
+    localStorage.setItem("chips", user.chips);
   });
 
   // Name button -> open popup with fresh user data
