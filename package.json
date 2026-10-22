@@ -5,13 +5,15 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
     "@tailwindcss/cli": "^4.3.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -36,5 +38,32 @@
   "bugs": {
     "url": "https://github.com/jaiswalsoumya450-dev/practice/issues"
   },
-  "homepage": "https://github.com/jaiswalsoumya450-dev/practice#readme"
+  "homepage": "https://github.com/jaiswalsoumya450-dev/practice#readme",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.3.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup/globals.js"
+    ],
+    "clearMocks": true,
+    "restoreMocks": true,
+    "collectCoverageFrom": [
+      "config/**/*.js",
+      "controllers/**/*.js",
+      "middleware/**/*.js",
+      "models/**/*.js",
+      "modules/**/*.js",
+      "routes/**/*.js",
+      "services/**/*.js",
+      "socket/**/*.js",
+      "utils/**/*.js",
+      "!controllers/socket.controllers.js"
+    ]
+  }
 }
