@@ -12,7 +12,8 @@ The backend is Express and Socket.IO. Player accounts and chip balances live in 
 - The game starts as soon as the table is full. Players roll in the order they joined.
 - Each roll (1 to 6) is added to your score. Scores are capped at 100, and whoever gets there first wins everyone's stake.
 - Leaving a game in progress counts as a forfeit and the other player gets the pot. In 3 and 4 player games it goes to the first remaining player in turn order.
-- A waiting room that doesn't fill within 30 seconds is meant to be cancelled with refunds, and a game where nobody rolls for 2 minutes is meant to be called off as a draw with everyone refunded. Neither currently happens; see [Known issues](#known-issues).
+- A waiting room that doesn't fill within 30 seconds is cancelled and everyone in it gets their stake back.
+- A game where nobody rolls for 2 minutes is called off as a draw and everyone is refunded.
 
 ## Stack
 
@@ -122,6 +123,8 @@ Joins also take a 5-second per-user lock in Redis. A second join from the same u
 
 When a player leaves a waiting room, the refund is based on the write that actually took them out of the room, not on an earlier read. If several leaves for the same player arrive at once, only one of them can see the player in the room, so only one refund goes out.
 
+Two background jobs run every 3 seconds on every server instance: one cancels waiting rooms whose 30 seconds are up, the other calls off games with no roll for 2 minutes. Each due room is claimed with a `ZREM`, so only one instance handles it. Cancelling also goes through the compare-and-set, so a player who joins or leaves at the same moment is either fully in (the game starts, or they're refunded with the room) or fully out (their own leave refunded them).
+
 The game rules (`fnAddPlayerPure`, `fnRollDicePure`, `fnForfeitPure` and so on in `game.services.js`) are plain functions with no I/O, which makes them easy to test on their own.
 
 ## REST API
@@ -209,11 +212,9 @@ Bugs that are known but not fixed yet are written as `test.failing`. Each one de
 
 These are open. Most have a `test.failing` test that covers them.
 
-- The background sweeps never run. `fnStartBackgroundSweeps(io)` in `join.controller.js` is never called. Rooms that don't fill never time out (the search screen sits at 00:00 until you press Leave), stakes in those rooms stay held, and abandoned games are never settled. Calling it from `socket.init.js` should fix this.
 - Double charge. If you're still seated in a waiting public room but your active-game pointer moved (by joining and then leaving a private room), joining public again charges you a second time without giving you a second seat.
 - Negative stakes. The server accepts a negative `lobbyChips`. The browser blocks it, but a hand-made socket message doesn't have to. The winner ends up losing chips at payout.
 - Fractional table sizes. `maxPlayers: 3.5` isn't rounded.
-- A leave that lands mid-sweep refunds twice. If a leave's removal lands after the expiry sweep has read the room but before it deletes it, both refund the player. This only matters once the sweeps run.
 - Rejoin errors hang the client. `rejoinRoom` and `rejoinGame` have no try/catch, so a Redis error means the ack is never sent.
 - Under heavy write contention a perfectly good room can be dropped from the open list.
 - New rooms are saved without a TTL until their first update.

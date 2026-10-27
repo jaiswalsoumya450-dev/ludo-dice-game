@@ -312,13 +312,14 @@ describe("fnForfeitPure", () => {
         expect(game.fnForfeitPure(playingRoom(["solo"]), "solo")).toMatchObject({ status: "finished", winnerId: null });
     });
 
-    test("tolerates a missing playerOrder", () => {
+    test("tolerates a missing playerOrder (nobody can forfeit, room unchanged)", () => {
         const room = { ...playingRoom(["a", "b"]), playerOrder: null };
-        expect(game.fnForfeitPure(room, "a").winnerId).toBeNull();
+        expect(game.fnForfeitPure(room, "a")).toBe(room);
     });
 
-    test("a user who isn't in the game can still end it (the first player is declared winner)", () => {
-        expect(game.fnForfeitPure(playingRoom(["a", "b"]), "outsider")).toMatchObject({ status: "finished", winnerId: "a" });
+    test("a user who isn't in the game cannot end it", () => {
+        const room = playingRoom(["a", "b"]);
+        expect(game.fnForfeitPure(room, "outsider")).toBe(room);
     });
 
     test.each(["waiting", "finished"])("returns the very same room when status is %s", (status) => {

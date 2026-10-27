@@ -60,25 +60,21 @@ describe("updateUser validation", () => {
     test.each([
         [{ sImage: 5 }],
         [{ sImage: "5" }],
-        [{ chips: "-100" }],
-        [{ chips: 1.5 }],
-        [{ sName: "Bob", sImage: 1, chips: 0 }],
+        [{ sName: "Bob", sImage: 1 }],
     ])("accepts %j", async (body) => {
         await request(app).post("/t").send(body).expect(200);
     });
 
     test.each([
         [{ sImage: "abc" }],
-        [{ chips: "lots" }],
-        [{ chips: "1e3" }],
-        [{ chips: "" }],
+        [{ sImage: "" }],
         [{ sImage: ["x"] }],
     ])("412 for %j", async (body) => {
         await request(app).post("/t").send(body).expect(412);
     });
 
     test("an empty array slips past isNumeric (validators run per element)", async () => {
-        await request(app).post("/t").send({ sImage: [], chips: [] }).expect(200);
+        await request(app).post("/t").send({ sImage: [] }).expect(200);
     });
 
     test("sName is not type-checked despite the 'must be a string' message", async () => {

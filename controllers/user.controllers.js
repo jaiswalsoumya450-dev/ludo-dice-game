@@ -1,9 +1,16 @@
 "use strict";
 const userService = require('../services/user.services');
 
+//users may only read or delete their own account: the id in the url must match the id in their verified token
+//(the profile includes did, which is the guest login credential, so exposing it to others would let them log in as you)
+function fnIsSelf(req) {
+    return req.params.id === String(req.user._id);
+}
+
 //function to get user by id
 async function fnGetUser(req, res) {
     try {
+        if (!fnIsSelf(req)) return res.status(403).json({ error: 'Forbidden' });
       //user will store the user document returned from the database using the provided id in the request parameters
         const user = await userService.fnGetUser(req.params.id);
         //return 404 error if user is null
@@ -18,13 +25,13 @@ async function fnGetUser(req, res) {
 //usercontroller, pull params from body, userauth
 async function fnUpdateUser(req, res) {
     try {
-      //destructuring the id, sName, and sImage from the request body to update them in the user document in the database
-      //same as:
-      //const sName = req.body.sName;
-        const { _id, sName, sImage, chips } = req.body;
+      //the user being updated always comes from the verified token, never from the body,
+      //so nobody can edit someone else's account by sending their _id
+      //chips are deliberately not editable here: balances only change through the wallet service (stakes, payouts, refunds)
+        const { sName, sImage } = req.body;
         //call the service function to update the user document in the database
-        //using the new provided id, sName, sImage, and/or chips values
-        const user = await userService.fnUpdateUser(_id, { sName, sImage, chips });
+        //using the new provided sName and/or sImage values
+        const user = await userService.fnUpdateUser(req.user._id, { sName, sImage });
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json({ success: true, data: user });
     } catch (err) {
@@ -35,6 +42,7 @@ async function fnUpdateUser(req, res) {
 
 async function fnDeleteUser(req, res) {
     try {
+        if (!fnIsSelf(req)) return res.status(403).json({ error: 'Forbidden' });
       //get id from url, ask fnDeleteUser to delete user from database
       //if user is null return 404 error, else return success message
         const user = await userService.fnDeleteUser(req.params.id);

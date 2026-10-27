@@ -50,10 +50,7 @@ describe("fnInit", () => {
         expect(logger.error).toHaveBeenCalledWith("Socket error: ", err);
     });
 
-    // KNOWN BUG — fnStartBackgroundSweeps is never called anywhere, so waiting
-    // rooms never time out (stakes are never refunded) and crashed games are
-    // never settled.
-    test.failing("starts the background matchmaking/abandoned-game sweeps", () => {
+    test("starts the background matchmaking/abandoned-game sweeps", () => {
         fnInit({});
         expect(joinController.fnStartBackgroundSweeps).toHaveBeenCalledWith(mockIo);
     });

@@ -247,7 +247,7 @@ describe("fnLeaveRoom", () => {
         test("removes the player, refunds the stake, unsubscribes, and broadcasts the smaller room", async () => {
             gameServices.fnGetRoom.mockResolvedValue(waiting());
             const after = waiting({ players: [{ userId: "user-2", sName: "Bob", sImage: 37 }] });
-            gameServices.fnRemovePlayer.mockResolvedValue(after);
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: after, removedFrom: waiting() });
 
             await expect(call({ gameId: "g1" })).resolves.toEqual({ status: 200 });
             expect(gameServices.fnRemovePlayer).toHaveBeenCalledWith("g1", "user-1");
@@ -260,15 +260,36 @@ describe("fnLeaveRoom", () => {
 
         test("no broadcast when the room was deleted (last player left)", async () => {
             gameServices.fnGetRoom.mockResolvedValue(waiting());
-            gameServices.fnRemovePlayer.mockResolvedValue(null);
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: null, removedFrom: waiting() });
             await call({ gameId: "g1" });
             expect(wallet.fnCreditChips).toHaveBeenCalledWith("user-1", 100);
             expect(io.emitted).toHaveLength(0);
         });
 
+        test("refunds the stake recorded at removal time, not the earlier read", async () => {
+            gameServices.fnGetRoom.mockResolvedValue(waiting({ lobbyChips: 999 }));
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: null, removedFrom: waiting({ lobbyChips: 100 }) });
+            await call({ gameId: "g1" });
+            expect(wallet.fnCreditChips).toHaveBeenCalledWith("user-1", 100);
+        });
+
+        test("no refund if this call didn't actually remove the player (a concurrent leave or sweep got there first)", async () => {
+            gameServices.fnGetRoom.mockResolvedValue(waiting());
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: null, removedFrom: null });
+            await call({ gameId: "g1" });
+            expect(wallet.fnCreditChips).not.toHaveBeenCalled();
+        });
+
+        test("no refund if the room had started by the time the removal landed", async () => {
+            gameServices.fnGetRoom.mockResolvedValue(waiting());
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: playing(), removedFrom: playing() });
+            await call({ gameId: "g1" });
+            expect(wallet.fnCreditChips).not.toHaveBeenCalled();
+        });
+
         test.each([0, undefined, -5])("no refund for a free room (lobbyChips=%p)", async (lobbyChips) => {
             gameServices.fnGetRoom.mockResolvedValue(waiting({ lobbyChips }));
-            gameServices.fnRemovePlayer.mockResolvedValue(null);
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: null, removedFrom: waiting({ lobbyChips }) });
             await call({ gameId: "g1" });
             expect(wallet.fnCreditChips).not.toHaveBeenCalled();
         });
@@ -299,9 +320,27 @@ describe("fnLeaveRoom", () => {
         });
     });
 
+    describe("a room the user isn't in", () => {
+        test.each([
+            ["waiting", () => waiting({ players: [{ userId: "someone-else" }] })],
+            ["playing", () => playing({ players: [{ userId: "a" }, { userId: "b" }], playerOrder: ["a", "b"] })],
+        ])("a %s room is left alone: no removal, refund, forfeit, payout or broadcast", async (_, makeRoom) => {
+            gameServices.fnGetRoom.mockResolvedValue(makeRoom());
+            await expect(call({ gameId: "g1" })).resolves.toEqual({ status: 200 });
+            expect(gameServices.fnRemovePlayer).not.toHaveBeenCalled();
+            expect(gameServices.fnEndGameByForfeit).not.toHaveBeenCalled();
+            expect(wallet.fnCreditChips).not.toHaveBeenCalled();
+            expect(payout.fnSettleGamePot).not.toHaveBeenCalled();
+            expect(io.emitted).toHaveLength(0);
+            expect(socket.leave).toHaveBeenCalledWith("g1");
+            expect(socket._gameId).toBeNull();
+        });
+    });
+
     test("leaving a finished game just removes the player (no refund, no payout)", async () => {
-        gameServices.fnGetRoom.mockResolvedValue(playing({ status: "finished", winnerId: "user-2" }));
-        gameServices.fnRemovePlayer.mockResolvedValue(playing({ status: "finished", players: [{ userId: "user-2" }] }));
+        const finished = playing({ status: "finished", winnerId: "user-2" });
+        gameServices.fnGetRoom.mockResolvedValue(finished);
+        gameServices.fnRemovePlayer.mockResolvedValue({ room: playing({ status: "finished", players: [{ userId: "user-2" }] }), removedFrom: finished });
         await call({ gameId: "g1" });
         expect(gameServices.fnRemovePlayer).toHaveBeenCalled();
         expect(wallet.fnCreditChips).not.toHaveBeenCalled();
@@ -310,8 +349,9 @@ describe("fnLeaveRoom", () => {
 
     test("an unknown room is treated as already gone (no refund)", async () => {
         gameServices.fnGetRoom.mockResolvedValue(null);
-        gameServices.fnRemovePlayer.mockResolvedValue(null);
+        gameServices.fnRemovePlayer.mockResolvedValue({ room: null, removedFrom: null });
         await expect(call({ gameId: "ghost" })).resolves.toEqual({ status: 200 });
+        expect(gameServices.fnRemovePlayer).toHaveBeenCalledWith("ghost", "user-1");
         expect(wallet.fnCreditChips).not.toHaveBeenCalled();
     });
 
@@ -328,7 +368,7 @@ describe("fnLeaveRoom", () => {
         }],
         ["the refund", () => {
             gameServices.fnGetRoom.mockResolvedValue(waiting());
-            gameServices.fnRemovePlayer.mockResolvedValue(null);
+            gameServices.fnRemovePlayer.mockResolvedValue({ room: null, removedFrom: waiting() });
             wallet.fnCreditChips.mockRejectedValue(new Error("x"));
         }],
     ])("errors in %s are logged and the client still gets a 200 ack", async (_, arrange) => {

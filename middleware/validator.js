@@ -20,8 +20,7 @@ const guestLogin = [
 //checks if the fields to be updated are of the correct type
 const updateUser = [
     check('sName', 'Name must be a string').optional(),
-    check('sImage', 'sImage must be a number').optional().isNumeric(),
-    check('chips', 'chips must be a number').optional().isNumeric()
+    check('sImage', 'sImage must be a number').optional().isNumeric()
 ];
 
 module.exports = {

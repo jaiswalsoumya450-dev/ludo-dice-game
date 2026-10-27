@@ -350,19 +350,19 @@ describe("chip conservation under random play", () => {
     });
 });
 
-describe("known bugs (test.failing: these assert the CORRECT behaviour and currently fail)", () => {
-    // Anyone can send leaveRoom with any waiting room's id: there's no
-    // membership check before the refund, so it mints `lobbyChips` each time.
-    test.failing("a player who never joined a room can't get a 'refund' from it", async () => {
+describe("leaveRoom can't be abused", () => {
+    test("a player who never joined a room can't get a 'refund' from it", async () => {
         const alice = newPlayer("Alice");
         const mallory = newPlayer("Mallory");
         const { gameId } = await joinPublic(alice, { maxPlayers: 3, lobbyChips: STAKE });
 
         await leave(mallory, { gameId });
         expect(balance(mallory)).toBe(START);
+        expect((await gameServices.fnGetRoom(gameId)).players).toHaveLength(1);
+        expect(totalChips() + escrowed()).toBe(2 * START);
     });
 
-    test.failing("leaving the same waiting room twice only refunds once", async () => {
+    test("leaving the same waiting room twice only refunds once", async () => {
         const alice = newPlayer("Alice");
         const bob = newPlayer("Bob");
         const data = { maxPlayers: 3, lobbyChips: STAKE };
@@ -374,9 +374,19 @@ describe("known bugs (test.failing: these assert the CORRECT behaviour and curre
         expect(balance(alice)).toBe(START);
     });
 
-    // fnLeaveRoom forfeits on behalf of socket._userId without checking they
-    // are in the game; fnForfeitPure then crowns playerOrder[0].
-    test.failing("an outsider can't end someone else's game", async () => {
+    test("spamming concurrent leaves only refunds once", async () => {
+        const alice = newPlayer("Alice");
+        const bob = newPlayer("Bob");
+        const data = { maxPlayers: 3, lobbyChips: STAKE };
+        const { gameId } = await joinPublic(alice, data);
+        await joinPublic(bob, data);
+
+        await Promise.all(Array.from({ length: 10 }, () => leave(alice, { gameId })));
+        expect(balance(alice)).toBe(START);
+        expect(totalChips() + escrowed()).toBe(2 * START);
+    });
+
+    test("an outsider can't end someone else's game", async () => {
         const alice = newPlayer("Alice");
         const bob = newPlayer("Bob");
         const mallory = newPlayer("Mallory");
@@ -385,8 +395,104 @@ describe("known bugs (test.failing: these assert the CORRECT behaviour and curre
 
         await leave(mallory, { gameId });
         expect((await gameServices.fnGetRoom(gameId)).status).toBe("playing");
+        expect([balance(alice), balance(bob), balance(mallory)]).toEqual([START - STAKE, START - STAKE, START]);
+        expect(io.eventsFor(SOCKET_EVENTS.dice_rolled)).toHaveLength(0);
     });
 
+    describe("expiry sweep racing other players", () => {
+        beforeEach(() => jest.useFakeTimers({ now: 0, doNotFake: ["setImmediate", "nextTick"] }));
+        afterEach(() => {
+            jest.clearAllTimers();
+            jest.useRealTimers();
+        });
+
+        /** Starts the sweeps, lets the 30s run out, and freezes the sweep right after its first read of the room. */
+        async function startSweepAndPauseAfterRead(gameId) {
+            let resume;
+            let paused = false;
+            const realGet = redis.get.bind(redis);
+            jest.spyOn(redis, "get").mockImplementation(async (key) => {
+                const fromSweep = new Error().stack.includes("fnSweepExpiredWaitingRooms");
+                const value = await realGet(key);
+                if (fromSweep && key === keys.fnRedisGameKey(gameId) && !paused) {
+                    paused = true;
+                    await new Promise((r) => (resume = r));
+                }
+                return value;
+            });
+            join.fnStartBackgroundSweeps(io);
+            jest.advanceTimersByTime(gameServices.WAITING_MS);
+            await settle();
+            expect(paused).toBe(true);
+            return async () => {
+                resume();
+                await settle();
+                jest.advanceTimersByTime(50); // past the CAS retry jitter, in case the sweep lost its write
+                await settle();
+            };
+        }
+
+        test("refunds the stake exactly once when the sweep wins the race", async () => {
+            const alice = newPlayer("Alice");
+            await joinPublic(alice);
+            join.fnStartBackgroundSweeps(io);
+
+            const realRemove = gameServices.fnRemovePlayer;
+            jest.spyOn(gameServices, "fnRemovePlayer").mockImplementationOnce(async (...args) => {
+                jest.advanceTimersByTime(gameServices.WAITING_MS);
+                await settle();
+                return realRemove(...args);
+            });
+
+            await leave(alice);
+            expect(balance(alice)).toBe(START);
+        });
+
+        test("a leave that lands mid-sweep is refunded once, and the rest of the room is still refunded", async () => {
+            const alice = newPlayer("Alice");
+            const bob = newPlayer("Bob");
+            const data = { maxPlayers: 3, lobbyChips: STAKE };
+            const { gameId } = await joinPublic(alice, data);
+            await joinPublic(bob, data);
+
+            const resumeSweep = await startSweepAndPauseAfterRead(gameId);
+            await leave(alice, { gameId });
+            await resumeSweep();
+
+            expect([balance(alice), balance(bob)]).toEqual([START, START]);
+            expect(await gameServices.fnGetRoom(gameId)).toBeNull();
+            expect(io.eventsFor(SOCKET_EVENTS.room_cancelled)).toHaveLength(1);
+        });
+
+        test("a join that fills the room mid-sweep starts the game instead of it being cancelled", async () => {
+            const alice = newPlayer("Alice");
+            const bob = newPlayer("Bob");
+            const { gameId } = await joinPublic(alice);
+
+            const resumeSweep = await startSweepAndPauseAfterRead(gameId);
+            await expect(joinPublic(bob)).resolves.toMatchObject({ gameId, roomStatus: "playing" });
+            await resumeSweep();
+
+            expect((await gameServices.fnGetRoom(gameId)).status).toBe("playing");
+            expect([balance(alice), balance(bob)]).toEqual([START - STAKE, START - STAKE]);
+            expect(totalChips() + escrowed()).toBe(2 * START);
+            expect(io.eventsFor(SOCKET_EVENTS.room_cancelled)).toHaveLength(0);
+        });
+
+        test("leaving a room after it was cancelled refunds nothing extra", async () => {
+            const alice = newPlayer("Alice");
+            const { gameId } = await joinPublic(alice);
+            join.fnStartBackgroundSweeps(io);
+            jest.advanceTimersByTime(gameServices.WAITING_MS);
+            await settle();
+
+            await leave(alice, { gameId });
+            expect(balance(alice)).toBe(START);
+        });
+    });
+});
+
+describe("known bugs (test.failing: these assert the CORRECT behaviour and currently fail)", () => {
     // If a player is still seated in a waiting public room but their
     // active-game pointer was moved (joining a private room, then leaving it),
     // the next public join debits the stake again, picks the same room, and
@@ -415,32 +521,5 @@ describe("known bugs (test.failing: these assert the CORRECT behaviour and curre
         const final = await playToFinish([alice, bob]);
 
         expect(User.balance(final.winnerId)).toBeGreaterThanOrEqual(START);
-    });
-
-    // The leave handler reads the room, then removes the player, then refunds
-    // based on the stale read. If the expiry sweep deletes (and refunds) the
-    // room in between, the player is refunded twice.
-    describe("expiry sweep racing a leave", () => {
-        beforeEach(() => jest.useFakeTimers({ now: 0, doNotFake: ["setImmediate", "nextTick"] }));
-        afterEach(() => {
-            jest.clearAllTimers();
-            jest.useRealTimers();
-        });
-
-        test.failing("refunds the stake exactly once", async () => {
-            const alice = newPlayer("Alice");
-            await joinPublic(alice);
-            join.fnStartBackgroundSweeps(io);
-
-            const realRemove = gameServices.fnRemovePlayer;
-            jest.spyOn(gameServices, "fnRemovePlayer").mockImplementationOnce(async (...args) => {
-                jest.advanceTimersByTime(gameServices.WAITING_MS);
-                await settle();
-                return realRemove(...args);
-            });
-
-            await leave(alice);
-            expect(balance(alice)).toBe(START);
-        });
     });
 });

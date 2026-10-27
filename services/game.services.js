@@ -132,7 +132,9 @@ function fnRollDicePure(room, userId, rollValue) {
 
 function fnForfeitPure(room, leavingUserId) {
   if (room.status !== "playing") return room;
-  const winnerId = (room.playerOrder || []).find((id) => id !== leavingUserId) || null;
+  const playerOrder = room.playerOrder || [];
+  if (!playerOrder.includes(leavingUserId)) return room; // only someone actually in the game can forfeit it
+  const winnerId = playerOrder.find((id) => id !== leavingUserId) || null;
   return { ...room, status: "finished", winnerId };
 }
 
@@ -331,28 +333,39 @@ async function fnJoinPrivateGame({ userId, sName, sImage, maxPlayers, lobbyChips
   });
 }
 
+/**
+ * Removes a player from a room. Returns `{ room, removedFrom }`:
+ *  - room: the room after removal, or null if it no longer exists / was deleted because it emptied
+ *  - removedFrom: the room exactly as it was when THIS call took the player out, or null if the
+ *    player wasn't in it. Because it comes from the CAS write that actually removed them, only one
+ *    of several concurrent leave calls can ever see it — callers must use it (not an earlier read)
+ *    to decide whether a refund is owed.
+ */
 async function fnRemovePlayer(gameId, userId) {
-  if (!gameId) return null;
+  if (!gameId) return { room: null, removedFrom: null };
 
   let deletedRoomSnapshot = null;
+  let previousRoom;
   let nextRoom;
   try {
-    ({ nextRoom } = await _fnCasUpdateRoom(gameId, (room) => {
+    ({ previousRoom, nextRoom } = await _fnCasUpdateRoom(gameId, (room) => {
       const updated = fnRemovePlayerPure(room, userId);
-      if (updated.players.length === 0) deletedRoomSnapshot = updated;
+      deletedRoomSnapshot = updated.players.length === 0 ? updated : null; // reset on every CAS attempt
       return updated;
     }));
   } catch (err) {
     await _fnClearPlayerActiveGame(userId);
-    if (err.status === 404) return null;
+    if (err.status === 404) return { room: null, removedFrom: null };
     throw err;
   }
 
   await _fnClearPlayerActiveGame(userId);
 
+  const removedFrom = previousRoom.players.some((p) => p.userId === userId) ? previousRoom : null;
+
   if (deletedRoomSnapshot) {
     await _fnDeleteRoomFully(deletedRoomSnapshot);
-    return null;
+    return { room: null, removedFrom };
   }
 
   // room was still "waiting" and dropped below capacity (e.g. filled then someone
@@ -361,7 +374,7 @@ async function fnRemovePlayer(gameId, userId) {
     await fnRedisSADD(client, fnRedisOpenRoomsKey("Public", nextRoom.maxPlayers, nextRoom.lobbyChips), nextRoom.gameId);
   }
 
-  return nextRoom;
+  return { room: nextRoom, removedFrom };
 }
 
 async function fnRollDice(gameId, userId) {
@@ -379,8 +392,9 @@ async function fnRollDice(gameId, userId) {
 
 async function fnEndGameByForfeit(gameId, leavingUserId) {
   const { previousRoom, nextRoom } = await _fnCasUpdateRoom(gameId, (room) => fnForfeitPure(room, leavingUserId));
-  await fnRedisZREM(client, fnRedisActiveGameActivityKey(), gameId);
-  return { room: nextRoom, justFinished: previousRoom.status === "playing" && nextRoom.status === "finished" };
+  const justFinished = previousRoom.status === "playing" && nextRoom.status === "finished";
+  if (justFinished) await fnRedisZREM(client, fnRedisActiveGameActivityKey(), gameId); // a no-op forfeit must not stop abandoned-game tracking
+  return { room: nextRoom, justFinished };
 }
 
 /**
@@ -388,6 +402,12 @@ async function fnEndGameByForfeit(gameId, leavingUserId) {
  * Any server instance can run this; ZREM only succeeds for whichever
  * instance gets there first, so an expiry is only ever processed once
  * even with several instances sweeping in parallel.
+ *
+ * The room is flipped to "cancelled" through the CAS before anything else
+ * happens, so the players passed to onExpired (and refunded by it) are exactly
+ * the ones seated at that instant: a join that fills the room first means it
+ * isn't cancelled at all, and a player who leaves first isn't in the list
+ * (their own leave refunded them; leaving a cancelled room refunds nothing).
  */
 async function fnSweepExpiredWaitingRooms(onExpired) {
   const now = Date.now();
@@ -396,12 +416,22 @@ async function fnSweepExpiredWaitingRooms(onExpired) {
     const claimed = await fnRedisZREM(client, fnRedisWaitingExpiryKey(), gameId);
     if (!claimed) continue;
 
-    const room = await fnGetRoom(gameId);
-    if (!room || room.status !== "waiting") continue;
+    let previousRoom;
+    let nextRoom;
+    try {
+      ({ previousRoom, nextRoom } = await _fnCasUpdateRoom(gameId, (room) =>
+        room.status === "waiting" ? { ...room, status: "cancelled" } : room,
+      ));
+    } catch (err) {
+      // room already gone -> nothing to do; anything else (e.g. contention) -> put it back for the next sweep
+      if (err.status !== 404) await fnRedisZADD(client, fnRedisWaitingExpiryKey(), now, gameId);
+      continue;
+    }
+    if (previousRoom.status !== "waiting") continue; // filled up and started (or finished) in the meantime
 
-    await _fnDeleteRoomFully(room);
-    for (const p of room.players) await _fnClearPlayerActiveGame(p.userId);
-    if (typeof onExpired === "function") await onExpired(room);
+    await _fnDeleteRoomFully(nextRoom);
+    for (const p of nextRoom.players) await _fnClearPlayerActiveGame(p.userId);
+    if (typeof onExpired === "function") await onExpired(nextRoom);
   }
 }
 

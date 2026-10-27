@@ -1,6 +1,7 @@
 'use strict';
 
 const socketConnection = require('./socket.connection.js');
+const joinController = require('./controllers/join.controller');
 
 const fnInit = (http) => {
     const socketOptions = {
@@ -15,6 +16,10 @@ const fnInit = (http) => {
 
     io.on("connection", (socket) => socketConnection.fnConnection(io, socket));
     io.on("connection_error", _fnSocketErrorHandler);
+
+    // reap rooms nobody filled in time and games abandoned mid-match (refunds/settles their stakes);
+    // safe to run on every instance, each expiry is claimed by exactly one
+    joinController.fnStartBackgroundSweeps(io);
 
     return;
 };

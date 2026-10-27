@@ -337,15 +337,17 @@ describe("fnJoinPrivateGame", () => {
 });
 
 describe("fnRemovePlayer", () => {
-    test.each([undefined, null, ""])("returns null for gameId %p", async (id) => {
-        await expect(game.fnRemovePlayer(id, "a")).resolves.toBeNull();
+    test.each([undefined, null, ""])("returns no room for gameId %p", async (id) => {
+        await expect(game.fnRemovePlayer(id, "a")).resolves.toEqual({ room: null, removedFrom: null });
     });
 
     test("removes a waiting player and keeps the room listed as open", async () => {
         const room = await join("a", { maxPlayers: 3 });
         await join("b", { maxPlayers: 3 });
-        const next = await game.fnRemovePlayer(room.gameId, "a");
+        const { room: next, removedFrom } = await game.fnRemovePlayer(room.gameId, "a");
         expect(next.players.map((p) => p.userId)).toEqual(["b"]);
+        expect(removedFrom).toMatchObject({ gameId: room.gameId, status: "waiting", lobbyChips: 100 });
+        expect(removedFrom.players.map((p) => p.userId)).toEqual(["a", "b"]);
         expect(storedRoom(room.gameId).players).toHaveLength(1);
         expect(activeGame("a")).toBeNull();
         expect(activeGame("b")).toBe(room.gameId);
@@ -369,7 +371,7 @@ describe("fnRemovePlayer", () => {
 
     test("does not re-list a room that is already playing", async () => {
         putRoom(playingRoom("g-play", ["a", "b", "c"]));
-        const next = await game.fnRemovePlayer("g-play", "a");
+        const { room: next } = await game.fnRemovePlayer("g-play", "a");
         expect(next.status).toBe("playing");
         expect(redis.sets.size).toBe(0);
     });
@@ -379,7 +381,9 @@ describe("fnRemovePlayer", () => {
         const room = await join("a");
         await redis.zadd(keys.fnRedisActiveGameActivityKey(), 1, room.gameId);
 
-        await expect(game.fnRemovePlayer(room.gameId, "a")).resolves.toBeNull();
+        const { room: next, removedFrom } = await game.fnRemovePlayer(room.gameId, "a");
+        expect(next).toBeNull();
+        expect(removedFrom).toMatchObject({ gameId: room.gameId, status: "waiting" });
         expect(storedRoom(room.gameId)).toBeNull();
         expect(inSet(openKey(), room.gameId)).toBe(false);
         expect(zscore(keys.fnRedisWaitingExpiryKey(), room.gameId)).toBeUndefined();
@@ -387,18 +391,46 @@ describe("fnRemovePlayer", () => {
         expect(activeGame("a")).toBeNull();
     });
 
-    test("removing a user who isn't in the room is a harmless no-op that still clears their pointer", async () => {
+    test("removing a user who isn't in the room is a no-op that reports nothing removed", async () => {
         const room = await join("a", { maxPlayers: 3 });
         redis.strings.set(keys.fnRedisPlayerActiveGameKey("x"), room.gameId);
-        const next = await game.fnRemovePlayer(room.gameId, "x");
+        const { room: next, removedFrom } = await game.fnRemovePlayer(room.gameId, "x");
         expect(next.players).toHaveLength(1);
+        expect(removedFrom).toBeNull();
         expect(activeGame("x")).toBeNull();
     });
 
-    test("an unknown room returns null and clears the user's pointer", async () => {
+    test("an unknown room reports nothing removed and clears the user's pointer", async () => {
         redis.strings.set(keys.fnRedisPlayerActiveGameKey("a"), "ghost");
-        await expect(game.fnRemovePlayer("ghost", "a")).resolves.toBeNull();
+        await expect(game.fnRemovePlayer("ghost", "a")).resolves.toEqual({ room: null, removedFrom: null });
         expect(activeGame("a")).toBeNull();
+    });
+
+    test("removing the same player twice only reports the first removal", async () => {
+        const room = await join("a", { maxPlayers: 3 });
+        await join("b", { maxPlayers: 3 });
+        expect((await game.fnRemovePlayer(room.gameId, "a")).removedFrom).not.toBeNull();
+        expect((await game.fnRemovePlayer(room.gameId, "a")).removedFrom).toBeNull();
+    });
+
+    test("of many concurrent removals of one player, exactly one reports removing them", async () => {
+        const room = await join("a", { maxPlayers: 3 });
+        await join("b", { maxPlayers: 3 });
+        const results = await Promise.all(Array.from({ length: 5 }, () => game.fnRemovePlayer(room.gameId, "a")));
+        expect(results.filter((r) => r.removedFrom)).toHaveLength(1);
+        expect(storedRoom(room.gameId).players.map((p) => p.userId)).toEqual(["b"]);
+    });
+
+    test("a CAS retry doesn't reuse a stale 'room is now empty' decision", async () => {
+        const room = await join("a", { maxPlayers: 3 });
+        // first attempt sees only "a" (-> empty after removal), but "b" joins before the write lands
+        jest.spyOn(redis, "casSet").mockImplementationOnce(async () => {
+            putRoom({ ...storedRoom(room.gameId), players: [...room.players, { userId: "b", sName: "b", sImage: 37 }] });
+            return 0;
+        });
+        const { room: next } = await game.fnRemovePlayer(room.gameId, "a");
+        expect(next.players.map((p) => p.userId)).toEqual(["b"]);
+        expect(storedRoom(room.gameId)).not.toBeNull();
     });
 
     test("non-404 errors are rethrown but the pointer is still cleared", async () => {
@@ -523,6 +555,15 @@ describe("fnEndGameByForfeit", () => {
         expect(justFinished).toBe(false);
     });
 
+    test("a user who isn't in the game can't forfeit it, and the game stays tracked for abandonment", async () => {
+        putRoom(playingRoom("g1"));
+        await redis.zadd(keys.fnRedisActiveGameActivityKey(), 1, "g1");
+        const { room, justFinished } = await game.fnEndGameByForfeit("g1", "outsider");
+        expect(room.status).toBe("playing");
+        expect(justFinished).toBe(false);
+        expect(zscore(keys.fnRedisActiveGameActivityKey(), "g1")).toBe(1);
+    });
+
     test("both players leaving at once only finishes the game once", async () => {
         putRoom(playingRoom("g1"));
         const [r1, r2] = await Promise.all([game.fnEndGameByForfeit("g1", "a"), game.fnEndGameByForfeit("g1", "b")]);
@@ -554,6 +595,58 @@ describe("fnSweepExpiredWaitingRooms", () => {
         expect(inSet(openKey(3), r1.gameId)).toBe(false);
         expect(redis.zsets.get(expiryKey)).toBeUndefined();
         ["a", "b", "c"].forEach((u) => expect(activeGame(u)).toBeNull());
+    });
+
+    test("hands onExpired the room as it was cancelled", async () => {
+        jest.spyOn(Date, "now").mockReturnValue(0);
+        const room = await join("a");
+        Date.now.mockReturnValue(game.WAITING_MS);
+        const onExpired = jest.fn();
+        await game.fnSweepExpiredWaitingRooms(onExpired);
+        expect(onExpired).toHaveBeenCalledWith(expect.objectContaining({ gameId: room.gameId, status: "cancelled", players: room.players }));
+    });
+
+    test("a room that fills up between the sweep's read and its write is left alone", async () => {
+        jest.spyOn(Date, "now").mockReturnValue(0);
+        const room = await join("a");
+        Date.now.mockReturnValue(game.WAITING_MS);
+        jest.spyOn(redis, "casSet").mockImplementationOnce(async () => {
+            putRoom(game.fnAddPlayerPure(storedRoom(room.gameId), { userId: "b", sName: "b", sImage: 37 }));
+            return 0;
+        });
+        const onExpired = jest.fn();
+        await game.fnSweepExpiredWaitingRooms(onExpired);
+        expect(onExpired).not.toHaveBeenCalled();
+        expect(storedRoom(room.gameId).status).toBe("playing");
+    });
+
+    test("only the players still seated when it's cancelled are reported", async () => {
+        jest.spyOn(Date, "now").mockReturnValue(0);
+        const room = await join("a", { maxPlayers: 3 });
+        await join("b", { maxPlayers: 3 });
+        Date.now.mockReturnValue(game.WAITING_MS);
+        jest.spyOn(redis, "casSet").mockImplementationOnce(async () => {
+            putRoom(game.fnRemovePlayerPure(storedRoom(room.gameId), "a"));
+            return 0;
+        });
+        const onExpired = jest.fn();
+        await game.fnSweepExpiredWaitingRooms(onExpired);
+        expect(onExpired.mock.calls[0][0].players.map((p) => p.userId)).toEqual(["b"]);
+    });
+
+    test("a room it can't update right now is put back for the next sweep, not dropped", async () => {
+        jest.spyOn(Date, "now").mockReturnValue(0);
+        const room = await join("a");
+        Date.now.mockReturnValue(game.WAITING_MS);
+        jest.spyOn(redis, "casSet").mockResolvedValue(0);
+        const onExpired = jest.fn();
+        await game.fnSweepExpiredWaitingRooms(onExpired);
+        expect(onExpired).not.toHaveBeenCalled();
+        expect(zscore(keys.fnRedisWaitingExpiryKey(), room.gameId)).toBe(game.WAITING_MS);
+
+        redis.casSet.mockRestore();
+        await game.fnSweepExpiredWaitingRooms(onExpired);
+        expect(onExpired).toHaveBeenCalledTimes(1);
     });
 
     test("leaves rooms that haven't expired yet (boundary: 1ms early)", async () => {

@@ -130,23 +130,24 @@ describe("GET /user/:id", () => {
         expect(res.body).toMatchObject({ success: true, data: { _id, sName: "Alice", chips: 5000 } });
     });
 
-    test("404 for an unknown id", async () => {
-        const { token } = await login();
-        await request(app).get(`${API}/user/64f000000000000000000000`).set(bearer(token)).expect(404, { error: "User not found" });
+    test("404 once the caller's own account no longer exists", async () => {
+        const { token, _id } = await login();
+        User.reset();
+        await request(app).get(`${API}/user/${_id}`).set(bearer(token)).expect(404, { error: "User not found" });
     });
 
-    test("400 for a malformed id", async () => {
+    test("403 (not 400) for a malformed id, since it can't be the caller's", async () => {
         const { token } = await login();
-        await request(app).get(`${API}/user/not-an-id`).set(bearer(token)).expect(400);
+        await request(app).get(`${API}/user/not-an-id`).set(bearer(token)).expect(403);
     });
 
-    // KNOWN BUG — the profile includes `did`, and `did` is the only credential
-    // guest login checks. Reading another player's profile lets you log in as them.
-    test.failing("does not expose another player's device id (their login credential)", async () => {
+    // the profile includes `did`, which is the only credential guest login checks
+    test("can't read another player's profile (which would leak their login credential)", async () => {
         const alice = await login("alice-device", "Alice");
         const bob = await login("bob-device", "Bob");
-        const res = await request(app).get(`${API}/user/${alice._id}`).set(bearer(bob.token)).expect(200);
-        expect(res.body.data).not.toHaveProperty("did");
+        const res = await request(app).get(`${API}/user/${alice._id}`).set(bearer(bob.token)).expect(403);
+        expect(res.body).toEqual({ error: "Forbidden" });
+        expect(JSON.stringify(res.body)).not.toContain("alice-device");
     });
 });
 
@@ -159,7 +160,7 @@ describe("PUT /user", () => {
 
     test.each([
         [{ sImage: "abc" }],
-        [{ chips: "lots" }],
+        [{ sImage: "" }],
     ])("412 for invalid field types %j", async (patch) => {
         const { token, _id } = await login();
         await request(app).put(`${API}/user`).set(bearer(token)).send({ _id, ...patch }).expect(412);
@@ -170,18 +171,25 @@ describe("PUT /user", () => {
         await request(app).put(`${API}/user`).set(bearer(token)).send({ _id, sName: "" }).expect(400);
     });
 
-    test("404 when _id is missing from the body", async () => {
-        const { token } = await login();
-        await request(app).put(`${API}/user`).set(bearer(token)).send({ sName: "x" }).expect(404);
+    test("the account comes from the token, so no _id is needed in the body", async () => {
+        const { token, _id } = await login();
+        await request(app).put(`${API}/user`).set(bearer(token)).send({ sName: "x" }).expect(200);
+        expect(User._users.get(_id).sName).toBe("x");
     });
 
-    // KNOWN BUG — the target is taken from req.body._id, not from the token,
-    // so any logged-in player can edit any other player (including their chips).
-    test.failing("cannot modify another player's account", async () => {
+    test("cannot modify another player's account", async () => {
         const alice = await login("alice-device", "Alice");
         const bob = await login("bob-device", "Bob");
-        await request(app).put(`${API}/user`).set(bearer(bob.token)).send({ _id: alice._id, chips: 0, sName: "pwned" });
-        expect(User.balance(alice._id)).toBe(5000);
+        await request(app).put(`${API}/user`).set(bearer(bob.token)).send({ _id: alice._id, sName: "pwned" }).expect(200);
+        expect(User._users.get(alice._id).sName).toBe("Alice");
+        expect(User._users.get(bob._id).sName).toBe("pwned");
+    });
+
+    test("cannot change a chip balance, not even their own", async () => {
+        const { token, _id } = await login();
+        const res = await request(app).put(`${API}/user`).set(bearer(token)).send({ chips: 1e9, sName: "Rich" }).expect(200);
+        expect(res.body.data).toMatchObject({ sName: "Rich", chips: 5000 });
+        expect(User.balance(_id)).toBe(5000);
     });
 });
 
@@ -198,11 +206,10 @@ describe("DELETE /user/:id", () => {
         await request(app).get(`${API}/user/${_id}`).set(bearer(token)).expect(404);
     });
 
-    // KNOWN BUG — no ownership check; any player can delete any other player.
-    test.failing("cannot delete another player's account", async () => {
+    test("cannot delete another player's account", async () => {
         const alice = await login("alice-device", "Alice");
         const bob = await login("bob-device", "Bob");
-        await request(app).delete(`${API}/user/${alice._id}`).set(bearer(bob.token));
+        await request(app).delete(`${API}/user/${alice._id}`).set(bearer(bob.token)).expect(403, { error: "Forbidden" });
         expect(User._users.has(alice._id)).toBe(true);
     });
 });

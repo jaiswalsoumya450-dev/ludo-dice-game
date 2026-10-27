@@ -87,17 +87,23 @@ async function fnLeaveRoom(io, socket, data, callback) {
   if (gameId) {
     try {
       const roomBeforeLeave = await gameServices.fnGetRoom(gameId);
+      const isMember = roomBeforeLeave && roomBeforeLeave.players.some((p) => p.userId === socket._userId);
 
-      if (roomBeforeLeave && roomBeforeLeave.status === "playing") {
+      if (roomBeforeLeave && !isMember) {
+        // not this user's room (stale/forged gameId) — nothing to leave, refund or forfeit
+        socket.leave(gameId);
+      } else if (roomBeforeLeave && roomBeforeLeave.status === "playing") {
         const { room, justFinished } = await gameServices.fnEndGameByForfeit(gameId, socket._userId);
         socket.leave(gameId);
         if (justFinished) await payoutServices.fnSettleGamePot(room);
         io.to(room.gameId).emit(SOCKET_EVENTS.dice_rolled, { roll: null, ...gameServices.fnPublicGameState(room) });
       } else {
-        const room = await gameServices.fnRemovePlayer(gameId, socket._userId);
+        const { room, removedFrom } = await gameServices.fnRemovePlayer(gameId, socket._userId);
         socket.leave(gameId);
-        if (roomBeforeLeave && roomBeforeLeave.status === "waiting" && roomBeforeLeave.lobbyChips > 0) {
-          await walletServices.fnCreditChips(socket._userId, roomBeforeLeave.lobbyChips); // left before the game started — refund the stake
+        // refund based on the atomic removal, not on roomBeforeLeave: concurrent leaves (or an
+        // expiry sweep that already refunded and deleted the room) must not pay out twice
+        if (removedFrom && removedFrom.status === "waiting" && removedFrom.lobbyChips > 0) {
+          await walletServices.fnCreditChips(socket._userId, removedFrom.lobbyChips); // left before the game started — refund the stake
         }
         if (room) _fnBroadcastRoom(io, room);
       }
